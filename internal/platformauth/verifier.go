@@ -1,0 +1,37 @@
+package platformauth
+
+import (
+	"context"
+	"time"
+
+	"github.com/alvor-technologies/iag-platform-go/authclient"
+)
+
+type Claims = authclient.Claims
+
+type Verifier struct {
+	inner *authclient.Verifier
+}
+
+func NewVerifier(jwksURL, issuer, audience string) *Verifier {
+	return &Verifier{inner: authclient.NewVerifier(authclient.Options{
+		JWKSURL: jwksURL, Issuer: issuer, Audience: audience,
+	})}
+}
+
+func (v *Verifier) Refresh(ctx context.Context) error { return v.inner.Refresh(ctx) }
+func (v *Verifier) StartRefreshLoop(ctx context.Context, interval time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_ = v.inner.Refresh(ctx)
+			}
+		}
+	}()
+}
+func (v *Verifier) Verify(token string) (*Claims, error) { return v.inner.Verify(token) }
