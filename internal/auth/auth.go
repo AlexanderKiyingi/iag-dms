@@ -1,3 +1,6 @@
+// Package auth implements per-route permission checks. The platform
+// middleware verifies the inbound JWT and attaches claims; this package only
+// inspects those claims.
 package auth
 
 import (
@@ -8,12 +11,10 @@ import (
 	"github.com/iag/dms/backend/internal/middleware"
 )
 
-const (
-	AuthModeNone  = "auth_mode_none"
-	strictRBACKey = "strict_rbac"
-)
+const strictRBACKey = "strict_rbac"
 
-// StrictRBAC enables fail-closed permission checks when JWT permission lists are empty.
+// StrictRBAC enables fail-closed permission checks when JWT permission lists
+// are empty (production default).
 func StrictRBAC() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set(strictRBACKey, true)
@@ -30,23 +31,7 @@ func isStrictRBAC(c *gin.Context) bool {
 	return ok && b
 }
 
-func SetAuthModeNone(c *gin.Context) {
-	c.Set(AuthModeNone, true)
-}
-
-func isAuthDisabled(c *gin.Context) bool {
-	if v, ok := c.Get(AuthModeNone); ok {
-		if b, ok := v.(bool); ok && b {
-			return true
-		}
-	}
-	return false
-}
-
 func HasPerm(c *gin.Context, codename string) bool {
-	if isAuthDisabled(c) {
-		return true
-	}
 	claims, ok := middleware.Claims(c)
 	if !ok || claims == nil {
 		return false
@@ -71,10 +56,6 @@ func HasPerm(c *gin.Context, codename string) bool {
 
 func RequirePerm(codename string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if isAuthDisabled(c) {
-			c.Next()
-			return
-		}
 		if _, ok := middleware.Claims(c); !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 			return
@@ -89,10 +70,6 @@ func RequirePerm(codename string) gin.HandlerFunc {
 
 func RequireAnyPerm(codenames ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if isAuthDisabled(c) {
-			c.Next()
-			return
-		}
 		if _, ok := middleware.Claims(c); !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 			return
@@ -109,10 +86,6 @@ func RequireAnyPerm(codenames ...string) gin.HandlerFunc {
 
 func RequireStaff() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if isAuthDisabled(c) {
-			c.Next()
-			return
-		}
 		claims, ok := middleware.Claims(c)
 		if !ok || claims == nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})

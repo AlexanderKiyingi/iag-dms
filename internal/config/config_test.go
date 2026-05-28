@@ -2,21 +2,15 @@ package config
 
 import "testing"
 
-func TestValidateProductionRequiresJWTAndSecret(t *testing.T) {
+func TestValidateProductionRequiresJWKSAndSecret(t *testing.T) {
 	cfg := Config{
-		Environment:   "production",
-		DatabaseURL:   "postgres://u:p@localhost/db",
-		Audience:      "iag.dms",
-		AuthMode:      "gateway",
-		CORSOrigin:    "https://app.example.com",
-		GatewaySecret: "gateway-secret-min-16",
+		Environment:         "production",
+		DatabaseURL:         "postgres://u:p@localhost/db",
+		Audience:            "iag.dms",
+		JWKSURL:             "https://auth.example.com/.well-known/jwks.json",
+		CORSOrigin:          "https://app.example.com",
+		ServiceClientSecret: "short",
 	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected AUTH_MODE=jwt requirement in production")
-	}
-
-	cfg.AuthMode = "jwt"
-	cfg.ServiceClientSecret = "short"
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected SERVICE_CLIENT_SECRET min length in production")
 	}
@@ -40,7 +34,7 @@ func TestValidateRejectsWildcardCORSInProduction(t *testing.T) {
 		Environment:         "production",
 		DatabaseURL:         "postgres://u:p@localhost/db",
 		Audience:            "iag.dms",
-		AuthMode:            "jwt",
+		JWKSURL:             "https://auth.example.com/.well-known/jwks.json",
 		CORSOrigin:          "https://app.example.com,*",
 		ServiceClientSecret: "production-secret-min-16",
 		AutoMigrate:         false,
@@ -52,10 +46,10 @@ func TestValidateRejectsWildcardCORSInProduction(t *testing.T) {
 }
 
 func TestStrictRBAC(t *testing.T) {
-	if !(Config{Environment: "production", AuthMode: "jwt"}).StrictRBAC() {
-		t.Fatal("production jwt should use strict RBAC")
+	if !(Config{Environment: "production"}).StrictRBAC() {
+		t.Fatal("production should use strict RBAC")
 	}
-	if (Config{Environment: "development", AuthMode: "jwt"}).StrictRBAC() {
+	if (Config{Environment: "development"}).StrictRBAC() {
 		t.Fatal("development should not use strict RBAC")
 	}
 }

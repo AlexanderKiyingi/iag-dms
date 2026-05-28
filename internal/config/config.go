@@ -15,9 +15,7 @@ type Config struct {
 	UseMemoryStore      bool
 	JWTIssuer           string
 	JWKSURL             string
-	Audience            string
-	AuthMode            string
-	GatewaySecret       string
+	Audience            string // aud claim the service requires on inbound tokens
 	GatewayAPIPrefix    string
 	ServiceClientID     string
 	ServiceClientSecret string
@@ -35,18 +33,14 @@ type Config struct {
 	WriteTimeout        time.Duration
 }
 
+// Load reads configuration from env. Hard cutover: every request must carry a
+// verifiable Bearer token with aud=iag.dms. AUTH_MODE and
+// GATEWAY_INTERNAL_SECRET no longer exist.
 func Load() (Config, error) {
 	env := strings.ToLower(strings.TrimSpace(envOr("ENVIRONMENT", envOr("APP_ENV", "development"))))
 	issuer := envOr("JWT_ISSUER", "http://localhost:3001")
-	authMode := strings.ToLower(strings.TrimSpace(envOr("AUTH_MODE", "jwt")))
-	switch authMode {
-	case "gateway", "jwt", "none":
-	default:
-		return Config{}, fmt.Errorf("AUTH_MODE must be gateway, jwt, or none (got %q)", authMode)
-	}
-
 	dbURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
-	useMemory := strings.EqualFold(envOr("STORE_MODE", ""), "memory") || (dbURL == "" && authMode == "none")
+	useMemory := strings.EqualFold(envOr("STORE_MODE", ""), "memory")
 
 	cfg := Config{
 		ServiceName:         envOr("SERVICE_NAME", "dms"),
@@ -57,8 +51,6 @@ func Load() (Config, error) {
 		JWTIssuer:           issuer,
 		JWKSURL:             envOr("JWKS_URL", strings.TrimRight(issuer, "/")+"/.well-known/jwks.json"),
 		Audience:            envOr("AUDIENCE", "iag.dms"),
-		AuthMode:            authMode,
-		GatewaySecret:       strings.TrimSpace(os.Getenv("GATEWAY_INTERNAL_SECRET")),
 		GatewayAPIPrefix:    strings.TrimSpace(envOr("GATEWAY_API_PREFIX", "/api/v1/dms")),
 		ServiceClientID:     envOr("SERVICE_CLIENT_ID", "iag-dms"),
 		ServiceClientSecret: strings.TrimSpace(os.Getenv("SERVICE_CLIENT_SECRET")),
@@ -82,21 +74,13 @@ func (c Config) Validate() error {
 	if !c.UseMemoryStore && c.DatabaseURL == "" {
 		return fmt.Errorf("DATABASE_URL is required unless STORE_MODE=memory")
 	}
-	if c.AuthMode == "gateway" {
-		if c.GatewaySecret == "" {
-			return fmt.Errorf("AUTH_MODE=gateway requires GATEWAY_INTERNAL_SECRET")
-		}
-		if len(c.GatewaySecret) < 16 {
-			return fmt.Errorf("GATEWAY_INTERNAL_SECRET must be at least 16 characters")
-		}
+	if c.Audience == "" {
+		return fmt.Errorf("AUDIENCE is required (e.g. iag.dms)")
 	}
-	if c.AuthMode == "jwt" && c.Audience == "" {
-		return fmt.Errorf("AUDIENCE is required when AUTH_MODE=jwt")
+	if c.JWKSURL == "" {
+		return fmt.Errorf("JWKS_URL is required")
 	}
 	if c.IsProduction() {
-		if c.AuthMode != "jwt" {
-			return fmt.Errorf("AUTH_MODE must be jwt in production (got %q)", c.AuthMode)
-		}
 		if c.HasWildcardCORS() {
 			return fmt.Errorf("set ALLOWED_ORIGINS in production (not *)")
 		}
@@ -124,8 +108,10 @@ func (c Config) IsProduction() bool {
 }
 
 // StrictRBAC denies access when JWT permissions are empty (fail-closed).
+// Production always enforces strict RBAC; dev allows empty permissions for
+// easier local iteration.
 func (c Config) StrictRBAC() bool {
-	return c.IsProduction() && c.AuthMode == "jwt"
+	return c.IsProduction()
 }
 
 func (c Config) HasWildcardCORS() bool {

@@ -9,7 +9,7 @@ import (
 func (h *API) PlatformStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"service":        h.Cfg.ServiceName,
-		"authMode":       h.Cfg.AuthMode,
+		"audience":       h.Cfg.Audience,
 		"gatewayPrefix":  h.Cfg.GatewayAPIPrefix,
 		"publicApiUrl":   h.Cfg.PublicAPIURL,
 		"store":          map[bool]string{true: "memory", false: "postgres"}[h.Cfg.UseMemoryStore],

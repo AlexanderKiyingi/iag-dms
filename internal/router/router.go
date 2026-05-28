@@ -42,9 +42,7 @@ func New(opts Options) *gin.Engine {
 	r.GET("/ready", api.Ready)
 
 	v1 := r.Group("/v1")
-	if opts.Cfg.AuthMode == "none" {
-		v1.Use(auth.SetAuthModeNone)
-	} else if opts.PlatformAuth != nil {
+	if opts.PlatformAuth != nil {
 		v1.Use(opts.PlatformAuth.AttachPrincipal())
 	}
 	if opts.Cfg.StrictRBAC() {

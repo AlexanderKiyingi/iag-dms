@@ -56,10 +56,6 @@ func main() {
 		}()
 	}
 
-	if cfg.AuthMode == "gateway" {
-		slog.Warn("AUTH_MODE=gateway is deprecated; use AUTH_MODE=jwt with gateway-forwarded Bearer tokens")
-	}
-
 	var pool *pgxpool.Pool
 	if !cfg.UseMemoryStore {
 		connectCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -87,24 +83,21 @@ func main() {
 		slog.Warn("STORE_MODE=memory — in-memory data only")
 	}
 
-	var verifier *platformauth.Verifier
-	if cfg.AuthMode == "jwt" {
-		verifier = platformauth.NewVerifier(cfg.JWKSURL, cfg.JWTIssuer, cfg.Audience)
-		jwksCtx, jwksCancel := context.WithTimeout(ctx, 10*time.Second)
-		if err := verifier.Refresh(jwksCtx); err != nil {
-			jwksCancel()
-			slog.Error("jwks refresh", "err", err)
-			os.Exit(1)
-		}
+	verifier := platformauth.NewVerifier(cfg.JWKSURL, cfg.JWTIssuer, cfg.Audience)
+	jwksCtx, jwksCancel := context.WithTimeout(ctx, 10*time.Second)
+	if err := verifier.Refresh(jwksCtx); err != nil {
 		jwksCancel()
-		verifier.StartRefreshLoop(ctx, 15*time.Minute)
+		slog.Error("jwks refresh", "err", err)
+		os.Exit(1)
 	}
+	jwksCancel()
+	verifier.StartRefreshLoop(ctx, 15*time.Minute)
 
 	if cfg.ServiceClientSecret != "" {
 		go registerPermissionsLoop(ctx, cfg)
 	}
 
-	platformAuth := middleware.NewPlatformAuth(cfg.AuthMode, cfg.GatewaySecret, verifier)
+	platformAuth := middleware.NewPlatformAuth(verifier)
 	eventBus := events.New(events.Config{Brokers: cfg.KafkaBrokers, Enabled: cfg.EventBusEnabled})
 	defer eventBus.Close()
 
@@ -144,7 +137,7 @@ func main() {
 	go func() {
 		slog.Info("DMS API listening",
 			"addr", cfg.Addr,
-			"authMode", cfg.AuthMode,
+			"audience", cfg.Audience,
 			"gatewayPrefix", cfg.GatewayAPIPrefix,
 			"store", map[bool]string{true: "memory", false: "postgres"}[cfg.UseMemoryStore],
 		)
