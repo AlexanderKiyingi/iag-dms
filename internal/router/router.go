@@ -29,6 +29,7 @@ func New(opts Options) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(otelgin.Middleware(opts.Cfg.ServiceName))
 	r.Use(platformmw.RequestID())
+	r.Use(securityHeaders())
 	r.Use(corsMiddleware(opts.Cfg.CORSOrigin))
 
 	r.Static("/assets", "./assets")
@@ -151,6 +152,30 @@ func registerAdminRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 
 func registerIntelligenceRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.GET("/insights/signals", auth.RequirePerm("dms.insights.read"), api.InsightsSignals)
+}
+
+// securityHeaders emits the platform-wide baseline browser security header
+// set. The Content-Security-Policy uses the permissive shape because this
+// service mounts a static SPA (/, /index.html, /assets/*) — connect-src /
+// img-src / style-src / font-src are allow-listed to 'self' (plus data: for
+// inline images and fonts) so the bundled frontend can fetch its own assets.
+//
+// HSTS is gated on TLS termination (direct TLS or trusted X-Forwarded-Proto)
+// so plain-HTTP dev environments (http://localhost) do not lock browsers
+// into HTTPS for the developer's whole domain.
+func securityHeaders() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Permissions-Policy", "geolocation=(), microphone=(), camera=(), interest-cohort=()")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+		}
+		c.Next()
+	}
 }
 
 // cors helpers below
