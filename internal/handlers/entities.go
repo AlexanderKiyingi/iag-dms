@@ -8,6 +8,7 @@ import (
 
 	"github.com/iag/dms/backend/internal/models"
 	"github.com/iag/dms/backend/internal/store"
+	"github.com/alvor-technologies/iag-platform-go/apierr"
 )
 
 func (h *API) ListDistributors(c *gin.Context) {
@@ -98,7 +99,7 @@ func (h *API) PatchOrderStatus(c *gin.Context) {
 			notFound(c)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "update failed"})
+		apierr.JSONStatus(c, http.StatusInternalServerError, "update failed")
 		return
 	}
 	c.JSON(http.StatusOK, item)

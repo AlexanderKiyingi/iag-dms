@@ -13,6 +13,7 @@ import (
 
 	"github.com/iag/dms/backend/internal/ctxkeys"
 	"github.com/iag/dms/backend/internal/platformauth"
+	"github.com/alvor-technologies/iag-platform-go/apierr"
 )
 
 type PlatformAuth struct {
@@ -39,17 +40,17 @@ func (m *PlatformAuth) AttachPrincipal() gin.HandlerFunc {
 			return
 		}
 		if m.verifier == nil {
-			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "jwt verifier not configured"})
+			apierr.Write(c, http.StatusServiceUnavailable, apierr.CodeServiceUnavailable, "JWT verifier not configured")
 			return
 		}
 		header := c.GetHeader("Authorization")
 		if !strings.HasPrefix(header, "Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			apierr.Unauthorized(c, "missing bearer token")
 			return
 		}
 		claims, err := m.verifier.Verify(strings.TrimPrefix(header, "Bearer "))
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			apierr.Unauthorized(c, "invalid or expired token")
 			return
 		}
 		uid, _ := uuid.Parse(claims.Subject)

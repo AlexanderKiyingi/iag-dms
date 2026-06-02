@@ -8,6 +8,7 @@ import (
 	"github.com/iag/dms/backend/internal/auth"
 	"github.com/iag/dms/backend/internal/middleware"
 	"github.com/iag/dms/backend/internal/models"
+	"github.com/alvor-technologies/iag-platform-go/apierr"
 )
 
 func (h *API) sessionFromContext(c *gin.Context) map[string]any {
@@ -103,7 +104,7 @@ func (h *API) PermissionsMe(c *gin.Context) {
 func (h *API) Lookups(c *gin.Context) {
 	items, err := h.Repo.Lookups(c.Request.Context(), c.Param("kind"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apierr.JSONStatus(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})

@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/iag/dms/backend/internal/store"
+	"github.com/alvor-technologies/iag-platform-go/apierr"
 )
 
 func listOpts(c *gin.Context) store.ListOpts {
@@ -29,9 +30,9 @@ func paginated(c *gin.Context, items any, total int) {
 }
 
 func notFound(c *gin.Context) {
-	c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+	apierr.JSONStatus(c, http.StatusNotFound, "not found")
 }
 
 func badRequest(c *gin.Context, msg string) {
-	c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+	apierr.JSONStatus(c, http.StatusBadRequest, msg)
 }
