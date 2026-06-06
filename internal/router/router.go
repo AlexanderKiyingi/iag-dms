@@ -11,6 +11,7 @@ import (
 	"github.com/iag/dms/backend/internal/auth"
 	"github.com/iag/dms/backend/internal/config"
 	"github.com/iag/dms/backend/internal/events"
+	"github.com/iag/dms/backend/internal/financeclient"
 	"github.com/iag/dms/backend/internal/handlers"
 	"github.com/iag/dms/backend/internal/middleware"
 	"github.com/iag/dms/backend/internal/store"
@@ -21,6 +22,7 @@ type Options struct {
 	Repo         *store.Repository
 	PlatformAuth *middleware.PlatformAuth
 	Events       *events.Bus
+	Finance      *financeclient.Client
 }
 
 func New(opts Options) *gin.Engine {
@@ -36,7 +38,7 @@ func New(opts Options) *gin.Engine {
 	r.StaticFile("/", "./index.html")
 	r.StaticFile("/index.html", "./index.html")
 
-	api := &handlers.API{Repo: opts.Repo, Cfg: opts.Cfg, Events: opts.Events}
+	api := &handlers.API{Repo: opts.Repo, Cfg: opts.Cfg, Events: opts.Events, Finance: opts.Finance}
 
 	r.GET("/healthz", api.Health)
 	r.GET("/health", api.Health)

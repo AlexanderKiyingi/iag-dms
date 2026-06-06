@@ -19,6 +19,7 @@ import (
 	dmsdb "github.com/iag/dms/backend/db"
 	"github.com/iag/dms/backend/internal/config"
 	"github.com/iag/dms/backend/internal/consumer"
+	"github.com/iag/dms/backend/internal/financeclient"
 	"github.com/iag/dms/backend/internal/db"
 	"github.com/iag/dms/backend/internal/events"
 	"github.com/iag/dms/backend/internal/migrate"
@@ -117,11 +118,19 @@ func main() {
 		defer commercial.Close()
 	}
 
+	financeClient := financeclient.New(financeclient.Config{
+		BaseURL:         cfg.FinanceURL,
+		TokenURL:        cfg.AuthTokenURL,
+		ServiceClientID: cfg.ServiceClientID,
+		ServiceSecret:   cfg.ServiceClientSecret,
+	})
+
 	engine := router.New(router.Options{
 		Cfg:          cfg,
 		Repo:         repo,
 		PlatformAuth: platformAuth,
 		Events:       eventBus,
+		Finance:      financeClient,
 	})
 
 	srv := &http.Server{

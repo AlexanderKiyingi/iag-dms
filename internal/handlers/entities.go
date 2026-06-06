@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -190,6 +192,25 @@ func (h *API) ListSKUs(c *gin.Context) {
 }
 
 func (h *API) ListInvoices(c *gin.Context) {
+	if h.Finance != nil && h.Finance.Enabled() {
+		items, err := h.Finance.ListInvoices(c.Request.Context(), listOpts(c).Limit)
+		if err == nil {
+			out := make([]models.Invoice, 0, len(items))
+			for _, it := range items {
+				due, _ := time.Parse("2006-01-02", it.Due)
+			out = append(out, models.Invoice{
+					ID:            it.No,
+					DistributorID: it.Customer,
+					Distributor:   it.Customer,
+					AmountUGX:     it.Balance,
+					Status:        it.Status,
+					DueDate:       due,
+				})
+			}
+			paginated(c, out, len(out))
+			return
+		}
+	}
 	items, total := h.Repo.ListInvoices(listOpts(c))
 	paginated(c, items, total)
 }
@@ -207,7 +228,24 @@ func (h *API) CreateInvoice(c *gin.Context) {
 }
 
 func (h *API) FinanceSummary(c *gin.Context) {
+	if h.Finance != nil && h.Finance.Enabled() {
+		if s, err := h.Finance.Summary(c.Request.Context()); err == nil {
+			c.JSON(http.StatusOK, models.FinanceSummary{
+				ARBalanceUGX: parseAmountUGX(s.ARBalance),
+				OverdueUGX:   parseAmountUGX(s.Overdue),
+				CollectedUGX: parseAmountUGX(s.Collected),
+				DSODays:      0,
+			})
+			return
+		}
+	}
 	c.JSON(http.StatusOK, h.Repo.FinanceSummary())
+}
+
+func parseAmountUGX(raw string) float64 {
+	var v float64
+	_, _ = fmt.Sscanf(raw, "%f", &v)
+	return v
 }
 
 func (h *API) ListPricing(c *gin.Context) {

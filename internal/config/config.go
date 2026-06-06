@@ -31,6 +31,7 @@ type Config struct {
 	ConsumerEnabled     bool
 	ConsumerTopic       string
 	ConsumerGroupID     string
+	FinanceURL          string
 	ReadTimeout         time.Duration
 	WriteTimeout        time.Duration
 }
@@ -66,6 +67,7 @@ func Load() (Config, error) {
 		ConsumerEnabled:     strings.EqualFold(os.Getenv("CONSUMER_ENABLED"), "true"),
 		ConsumerTopic:       envOr("CONSUMER_TOPIC", "iag.commercial"),
 		ConsumerGroupID:     envOr("CONSUMER_GROUP_ID", "iag-dms"),
+		FinanceURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("FINANCE_URL")), "/"),
 		ReadTimeout:         30 * time.Second,
 		WriteTimeout:        30 * time.Second,
 	}
