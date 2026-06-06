@@ -25,6 +25,7 @@ import (
 	"github.com/iag/dms/backend/internal/migrate"
 	"github.com/iag/dms/backend/internal/middleware"
 	"github.com/iag/dms/backend/internal/models"
+	"github.com/iag/dms/backend/internal/outbox"
 	"github.com/iag/dms/backend/internal/platformauth"
 	"github.com/iag/dms/backend/internal/router"
 	"github.com/iag/dms/backend/internal/seed"
@@ -103,6 +104,13 @@ func main() {
 	defer eventBus.Close()
 
 	repo := store.New(pool)
+	if pool != nil && eventBus.Enabled() {
+		outboxStore := outbox.NewStore(pool)
+		eventBus.SetOutbox(outboxStore)
+		outboxPublisher := outbox.NewPublisher(outboxStore, outboxDispatcher{bus: eventBus})
+		go outboxPublisher.Run(ctx)
+		slog.Info("outbox publisher started")
+	}
 
 	if cfg.ConsumerEnabled && len(cfg.KafkaBrokers) > 0 && pool != nil {
 		commercial := consumer.NewCommercial(consumer.Config{
@@ -170,6 +178,17 @@ func main() {
 	defer cancelShutdown()
 	_ = srv.Shutdown(shutdownCtx)
 	cancelApp()
+}
+
+type outboxDispatcher struct {
+	bus *events.Bus
+}
+
+func (d outboxDispatcher) DispatchOutbox(ctx context.Context, row outbox.Row) error {
+	if d.bus == nil {
+		return nil
+	}
+	return d.bus.DispatchOutbox(ctx, row.EventType, row.EventKey, row.Payload)
 }
 
 func configureLogger() {

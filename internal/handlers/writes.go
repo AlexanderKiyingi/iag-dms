@@ -37,12 +37,23 @@ func (h *API) PatchOutlet(c *gin.Context) {
 }
 
 func (h *API) GetInvoice(c *gin.Context) {
-	item, err := h.Repo.GetInvoice(c.Param("id"))
+	id := c.Param("id")
+	if h.Finance != nil && h.Finance.Enabled() {
+		if inv, err := h.Finance.GetInvoice(c.Request.Context(), id); err == nil {
+			h.recordAudit(c, "GetInvoice", store.AuditDetail("invoice", inv.No, "finance upstream"))
+			c.JSON(http.StatusOK, models.Invoice{
+				ID: inv.No, Distributor: inv.Customer, DistributorID: inv.Customer,
+				AmountUGX: inv.Total, Status: inv.Status,
+			})
+			return
+		}
+	}
+	item, err := h.Repo.GetInvoice(id)
 	if err != nil {
 		notFound(c)
 		return
 	}
-	h.recordAudit(c, "CompleteCheckIn", store.AuditDetail("check-in", item.ID, "completed"))
+	h.recordAudit(c, "GetInvoice", store.AuditDetail("invoice", item.ID, "read"))
 	c.JSON(http.StatusOK, item)
 }
 
@@ -108,7 +119,11 @@ func (h *API) RunReport(c *gin.Context) {
 		return
 	}
 	run := h.Repo.RunReport(in)
-	c.JSON(http.StatusAccepted, run)
+	status := http.StatusOK
+	if run.Status == "queued" {
+		status = http.StatusAccepted
+	}
+	c.JSON(status, run)
 }
 
 func (h *API) ExportPage(c *gin.Context) {

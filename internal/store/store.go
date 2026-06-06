@@ -13,7 +13,10 @@ import (
 	"github.com/iag/dms/backend/internal/models"
 )
 
-var ErrNotFound = errors.New("not found")
+var (
+	ErrNotFound      = errors.New("not found")
+	ErrInvalidInput  = errors.New("invalid input")
+)
 
 type ListOpts struct {
 	Limit  int

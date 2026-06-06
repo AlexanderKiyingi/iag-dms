@@ -75,6 +75,12 @@ func (c *Client) Summary(ctx context.Context) (Summary, error) {
 	return out, err
 }
 
+func (c *Client) GetInvoice(ctx context.Context, no string) (Invoice, error) {
+	var out Invoice
+	err := c.getJSON(ctx, "/v1/invoices/"+no, &out)
+	return out, err
+}
+
 func (c *Client) ListInvoices(ctx context.Context, limit int) ([]Invoice, error) {
 	if limit <= 0 {
 		limit = 50

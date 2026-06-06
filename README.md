@@ -6,8 +6,9 @@ Distribution Management Service (**IAG SAFARI** UI in `index.html`) — domain m
 
 - **Gin** REST API under `/v1`
 - **Postgres** persistence (migrations in `db/migrations/`) or **in-memory** store (`STORE_MODE=memory`)
-- **Platform JWT** via `shared/platform-go` when `AUTH_MODE=jwt`
-- **Kafka** events on `iag.operations` when `EVENT_BUS_ENABLED=true`
+- **Platform JWT** — every request requires Bearer token with `aud=iag.dms`
+- **Kafka** events on `iag.operations` (outbox) when `EVENT_BUS_ENABLED=true`
+- **Kafka consumer** on `iag.commercial` for CRM bridge events
 - Static UI + `assets/dms-api.js` client wired to create outlet, check-in, visit report, invoice
 
 ## Run locally
@@ -23,9 +24,7 @@ Open [http://localhost:4010/](http://localhost:4010/) (direct) or [http://localh
 ### With Postgres
 
 ```bash
-# example
-set DATABASE_URL=postgres://user:pass@localhost:5432/iag_dms?sslmode=disable
-set STORE_MODE=
+set DATABASE_URL=postgres://user:pass@localhost:5432/iag_platform?sslmode=disable
 go run .
 ```
 
@@ -41,12 +40,12 @@ go run .
 | `checkin` | `POST /v1/field/check-ins`, `POST /v1/field/visit-reports` |
 | `finance` | `GET /v1/finance/summary`, `GET/POST /v1/invoices` |
 | Search | `GET /v1/search?q=` |
-| Writes | `PATCH /v1/outlets/:id`, `POST /v1/orders`, `PATCH /v1/orders/:id/status`, `PATCH /v1/field/check-ins/:id` (complete), `POST /v1/claims`, `POST /v1/promotions`, `POST /v1/dispatch`, `POST /v1/reports/run`, `POST /v1/exports/:page` |
-| Detail | `GET /v1/invoices/:id`, `GET /v1/field/visit-reports` |
+| Writes | `PATCH /v1/outlets/:id`, `POST /v1/orders`, `POST /v1/dispatch`, `POST /v1/reports/run`, `POST /v1/exports/:page` |
 
 Health: `GET /healthz`, `GET /ready` (Postgres ping when DB enabled).
 
-Platform wiring: [`docs/PLATFORM_INTEGRATION.md`](docs/PLATFORM_INTEGRATION.md)
+Platform wiring: [`docs/PLATFORM_INTEGRATION.md`](docs/PLATFORM_INTEGRATION.md)  
+Production: [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md)
 
 ## Next.js integration
 
@@ -64,15 +63,12 @@ const boot = await dmsApi.bootstrap(accessToken);
 const outlets = await dmsApi.outlets(accessToken, { limit: 20 });
 ```
 
-- `GET /v1/bootstrap` returns `session`, RBAC `roles`, `permissions`, `pages`, and `page_titles`.
-- Platform: `/auth/session`, `/permissions/*`, `/lookups/:kind`, `/insights/signals`, `/audit`, `/admin/monitoring/*`.
-- Set `CONSUMER_ENABLED=true` to ingest `iag.commercial` events (audit trail).
-- Paginated lists use `{ items, meta }` — see [`docs/dms-api.ts`](docs/dms-api.ts) (copy into your Next app or import via path alias).
-- **Server Components / Route Handlers** can call the same URL without CORS; **client components** rely on gateway proxy + DMS `ALLOWED_ORIGINS` (default includes `http://localhost:3000`).
-- Gateway enforces auth and write permissions (`dms.manage_outlets`, etc.); compose uses `AUTH_MODE=jwt` so the forwarded Bearer is verified with audience `iag.dms`.
+- Paginated lists use `{ items, data, meta }` — see [`docs/dms-api.ts`](docs/dms-api.ts).
+- Set `FINANCE_URL` to proxy finance summary/invoices from iag-finance.
+- Set `CONSUMER_ENABLED=true` to ingest CRM events into DMS signals.
 
 ## Production
 
-Use [`config/.env.production.example`](config/.env.production.example): `AUTH_MODE=jwt`, `AUTO_MIGRATE=false`, `SEED_ON_EMPTY=false`, explicit `ALLOWED_ORIGINS` (no `*`), and `SERVICE_CLIENT_SECRET` from your secret store. Run DB migrations out of band. Traces export via `OTEL_EXPORTER_OTLP_ENDPOINT` (see compose `otel-collector:4317`). In production, RBAC is fail-closed when JWT `permissions` is empty.
+Use [`config/.env.production.example`](config/.env.production.example): explicit `ALLOWED_ORIGINS` (no `*`), `AUTO_MIGRATE=false`, `SEED_ON_EMPTY=false`, and `SERVICE_CLIENT_SECRET` from your secret store. Run DB migrations out of band. Traces export via `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 Registry: [`subrepos.json`](../../../subrepos.json) · Dev port: **4010** (gateway: `/api/v1/dms`)

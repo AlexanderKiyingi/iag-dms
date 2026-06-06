@@ -81,9 +81,19 @@ func (m *memoryState) getOutlet(id string) (models.Outlet, error) {
 	return models.Outlet{}, ErrNotFound
 }
 
-func (m *memoryState) createOutlet(in models.OutletInput) models.Outlet {
+func (m *memoryState) createOutlet(in models.OutletInput) (models.Outlet, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	found := false
+	for _, d := range m.distributors {
+		if d.ID == in.DistributorID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return models.Outlet{}, ErrInvalidInput
+	}
 	id := m.nextID("OUT", &m.nextOutlet)
 	o := models.Outlet{
 		ID: id, Name: in.Name, Address: in.Address, Channel: in.Channel,
@@ -96,7 +106,7 @@ func (m *memoryState) createOutlet(in models.OutletInput) models.Outlet {
 		ID: newUUID(), Kind: "outlet", Title: "Outlet activated · " + id,
 		Detail: in.Name,
 	}}, m.alerts...)
-	return o
+	return o, nil
 }
 
 func (m *memoryState) listOrders(opts ListOpts) ([]models.Order, int) {
@@ -414,9 +424,15 @@ func (m *memoryState) financeSummary() models.FinanceSummary {
 			overdue += inv.AmountUGX
 		}
 	}
+	var collected float64
+	for _, inv := range m.invoices {
+		if inv.Status == "paid" {
+			collected += inv.AmountUGX
+		}
+	}
 	return models.FinanceSummary{
-		ARBalanceUGX: ar, DSODays: 32.4, OverdueUGX: overdue,
-		CollectedUGX: 18_400_000,
+		ARBalanceUGX: ar, DSODays: 0, OverdueUGX: overdue,
+		CollectedUGX: collected,
 	}
 }
 

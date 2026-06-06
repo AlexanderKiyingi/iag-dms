@@ -161,13 +161,43 @@ func (r *Repository) pgJourney(ctx context.Context, repID string) models.Journey
 	if len(stops) == 0 {
 		return r.mem.journey(repID)
 	}
-	if repID == "FF-04" && len(stops) > 0 {
-		stops[0].Status = "completed"
-		if len(stops) > 1 {
-			stops[1].Status = "active"
+	r.applyJourneyCheckInStatus(ctx, repID, stops)
+	return models.JourneyDay{Date: time.Now().Format("2006-01-02"), RepID: repID, Stops: stops}
+}
+
+func (r *Repository) applyJourneyCheckInStatus(ctx context.Context, repID string, stops []models.JourneyStop) {
+	completed := map[string]bool{}
+	active := ""
+	rows, err := r.pool.Query(ctx, `
+		SELECT outlet_id, status FROM dms_check_ins
+		WHERE rep_id = $1 AND arrived_at >= CURRENT_DATE
+		ORDER BY arrived_at DESC
+	`, repID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var outletID, status string
+		if rows.Scan(&outletID, &status) != nil {
+			continue
+		}
+		if status == "completed" {
+			completed[outletID] = true
+		} else if active == "" {
+			active = outletID
 		}
 	}
-	return models.JourneyDay{Date: time.Now().Format("2006-01-02"), RepID: repID, Stops: stops}
+	for i := range stops {
+		switch {
+		case completed[stops[i].OutletID]:
+			stops[i].Status = "completed"
+		case stops[i].OutletID == active:
+			stops[i].Status = "active"
+		default:
+			stops[i].Status = "planned"
+		}
+	}
 }
 
 func (r *Repository) pgKPIBoard(ctx context.Context) models.KPIBoard {

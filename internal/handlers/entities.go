@@ -47,11 +47,19 @@ func (h *API) GetOutlet(c *gin.Context) {
 
 func (h *API) CreateOutlet(c *gin.Context) {
 	var in models.OutletInput
-	if err := c.ShouldBindJSON(&in); err != nil || in.Name == "" {
+	if err := c.ShouldBindJSON(&in); err != nil || in.Name == "" || in.Channel == "" || in.DistributorID == "" {
 		badRequest(c, "name, channel, and distributorId are required")
 		return
 	}
-	out := h.Repo.CreateOutlet(in)
+	out, err := h.Repo.CreateOutlet(in)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidInput) {
+			badRequest(c, err.Error())
+			return
+		}
+		apierr.JSONStatus(c, http.StatusInternalServerError, "create outlet failed")
+		return
+	}
 	h.publish(c, "dms.outlet.created", gin.H{"id": out.ID, "name": out.Name})
 	h.recordAudit(c, "CreateOutlet", store.AuditDetail("outlet", out.ID, "created"))
 	c.JSON(http.StatusCreated, out)

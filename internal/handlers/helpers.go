@@ -23,9 +23,11 @@ func listOpts(c *gin.Context) store.ListOpts {
 
 func paginated(c *gin.Context, items any, total int) {
 	opts := listOpts(c)
+	meta := gin.H{"total": total, "limit": opts.Limit, "offset": opts.Offset}
 	c.JSON(http.StatusOK, gin.H{
 		"items": items,
-		"meta": gin.H{"total": total, "limit": opts.Limit, "offset": opts.Offset},
+		"data":  items,
+		"meta":  meta,
 	})
 }
 

@@ -108,20 +108,32 @@ func (r *Repository) pgGetOutlet(ctx context.Context, id string) (models.Outlet,
 	return o, err
 }
 
-func (r *Repository) pgCreateOutlet(ctx context.Context, in models.OutletInput) models.Outlet {
-	id, _ := r.pgNextID(ctx, "OUT")
+func (r *Repository) pgCreateOutlet(ctx context.Context, in models.OutletInput) (models.Outlet, error) {
+	var exists bool
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM dms_distributors WHERE id = $1)`, in.DistributorID).Scan(&exists); err != nil {
+		return models.Outlet{}, err
+	}
+	if !exists {
+		return models.Outlet{}, fmt.Errorf("%w: distributor %q not found", ErrInvalidInput, in.DistributorID)
+	}
+	id, err := r.pgNextID(ctx, "OUT")
+	if err != nil {
+		return models.Outlet{}, err
+	}
 	o := models.Outlet{
 		ID: id, Name: in.Name, Address: in.Address, Channel: in.Channel,
 		DistributorID: in.DistributorID, BeatID: in.BeatID, Lat: in.Lat, Lng: in.Lng,
 		Status: "active", Score: "B", Frequency: "1x/wk",
 	}
-	_, _ = r.pool.Exec(ctx, `
+	if _, err := r.pool.Exec(ctx, `
 		INSERT INTO dms_outlets (id, name, address, channel, distributor_id, beat_id, lat, lng, status, score, frequency)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		o.ID, o.Name, o.Address, o.Channel, o.DistributorID, o.BeatID, o.Lat, o.Lng, o.Status, o.Score, o.Frequency)
+		o.ID, o.Name, o.Address, o.Channel, o.DistributorID, o.BeatID, o.Lat, o.Lng, o.Status, o.Score, o.Frequency); err != nil {
+		return models.Outlet{}, err
+	}
 	_, _ = r.pool.Exec(ctx, `INSERT INTO dms_alerts (id, kind, title, detail) VALUES ($1,'outlet',$2,$3)`,
 		uuid.NewString(), "Outlet activated · "+id, in.Name)
-	return o
+	return o, nil
 }
 
 func (r *Repository) pgListOrders(ctx context.Context, opts ListOpts) ([]models.Order, int) {
@@ -512,10 +524,16 @@ func (r *Repository) pgListExecution(ctx context.Context, opts ListOpts) ([]mode
 }
 
 func (r *Repository) pgFinanceSummary(ctx context.Context) models.FinanceSummary {
-	var ar, overdue float64
-	_ = r.pool.QueryRow(ctx, `SELECT COALESCE(SUM(amount_ugx),0) FROM dms_invoices`).Scan(&ar)
+	var ar, overdue, collected float64
+	_ = r.pool.QueryRow(ctx, `SELECT COALESCE(SUM(amount_ugx),0) FROM dms_invoices WHERE status <> 'paid'`).Scan(&ar)
 	_ = r.pool.QueryRow(ctx, `SELECT COALESCE(SUM(amount_ugx),0) FROM dms_invoices WHERE status = 'overdue'`).Scan(&overdue)
-	return models.FinanceSummary{ARBalanceUGX: ar, DSODays: 32.4, OverdueUGX: overdue, CollectedUGX: 18_400_000}
+	_ = r.pool.QueryRow(ctx, `SELECT COALESCE(SUM(amount_ugx),0) FROM dms_invoices WHERE status = 'paid'`).Scan(&collected)
+	var dso float64
+	_ = r.pool.QueryRow(ctx, `
+		SELECT COALESCE(AVG(GREATEST(0, CURRENT_DATE - due_date)), 0)
+		FROM dms_invoices WHERE status IN ('open', 'overdue')
+	`).Scan(&dso)
+	return models.FinanceSummary{ARBalanceUGX: ar, DSODays: dso, OverdueUGX: overdue, CollectedUGX: collected}
 }
 
 func (r *Repository) pgSearch(ctx context.Context, q string, limit int) []models.SearchResult {

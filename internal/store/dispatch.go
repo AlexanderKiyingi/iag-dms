@@ -36,7 +36,7 @@ func (r *Repository) GetOutlet(id string) (models.Outlet, error) {
 	return r.mem.getOutlet(id)
 }
 
-func (r *Repository) CreateOutlet(in models.OutletInput) models.Outlet {
+func (r *Repository) CreateOutlet(in models.OutletInput) (models.Outlet, error) {
 	if r.pool != nil {
 		return r.pgCreateOutlet(r.bg(), in)
 	}

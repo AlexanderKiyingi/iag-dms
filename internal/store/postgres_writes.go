@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -146,17 +147,35 @@ func (r *Repository) pgCreateDispatch(ctx context.Context, in models.DispatchInp
 
 func (r *Repository) pgRunReport(ctx context.Context, in models.ReportRunInput) models.ReportRun {
 	name := strings.TrimSpace(in.Name)
+	page := "outlets"
 	if name == "" && in.TemplateID != "" {
-		_ = r.pool.QueryRow(ctx, `SELECT name FROM dms_report_templates WHERE id = $1`, in.TemplateID).Scan(&name)
+		_ = r.pool.QueryRow(ctx, `SELECT name, data_source FROM dms_report_templates WHERE id = $1`, in.TemplateID).Scan(&name, &page)
 	}
 	if name == "" {
 		name = "Custom report"
 	}
-	var rowCount int
-	_ = r.pool.QueryRow(ctx, `SELECT COUNT(*)::int FROM dms_outlets`).Scan(&rowCount)
+	if page == "" {
+		page = "outlets"
+	}
+	jobID := uuid.NewString()
+	_, _ = r.pool.Exec(ctx, `
+		INSERT INTO dms_report_jobs (id, name, template_id, status, email_to, created_at)
+		VALUES ($1,$2,$3,'running',$4,NOW())
+	`, jobID, name, in.TemplateID, in.EmailTo)
+	payload := r.pgExportPage(ctx, page, "json")
+	raw, _ := json.Marshal(payload)
+	_, _ = r.pool.Exec(ctx, `
+		UPDATE dms_report_jobs
+		SET status = 'completed', row_count = $2, result = $3::jsonb, completed_at = NOW()
+		WHERE id = $1
+	`, jobID, payload.RowCount, raw)
+	msg := fmt.Sprintf("Report generated (%d rows)", payload.RowCount)
+	if strings.TrimSpace(in.EmailTo) != "" {
+		msg += " — email delivery pending notifications integration"
+	}
 	return models.ReportRun{
-		JobID: uuid.NewString(), Name: name, Status: "queued",
-		RowCount: rowCount, Message: "Report queued for generation and email delivery",
+		JobID: jobID, Name: name, Status: "completed",
+		RowCount: payload.RowCount, Message: msg,
 	}
 }
 
