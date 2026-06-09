@@ -125,6 +125,19 @@ func main() {
 		}()
 		defer commercial.Close()
 	}
+	if cfg.OperationsConsumerEnabled && len(cfg.KafkaBrokers) > 0 && pool != nil {
+		ops := consumer.NewOperations(consumer.OperationsConfig{
+			Brokers: cfg.KafkaBrokers,
+			GroupID: cfg.OperationsConsumerGroupID,
+			Topic:   cfg.OperationsConsumerTopic,
+		}, repo)
+		go func() {
+			if err := ops.Run(ctx); err != nil {
+				slog.Warn("operations consumer stopped", "err", err)
+			}
+		}()
+		defer ops.Close()
+	}
 
 	financeClient := financeclient.New(financeclient.Config{
 		BaseURL:         cfg.FinanceURL,
