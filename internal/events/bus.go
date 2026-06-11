@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/google/uuid"
@@ -15,6 +16,8 @@ const (
 	SpecVersion = "1.0"
 	Source      = "iag.dms"
 	TopicOps    = "iag.operations"
+
+	TypeAlertRaised = "dms.alert.raised"
 )
 
 type outboxEnqueuer interface {
@@ -154,6 +157,40 @@ func (b *Bus) writeEnvelope(ctx context.Context, env Envelope, key string) error
 		return err
 	}
 	return nil
+}
+
+// PublishAlert emits dms.alert.raised on iag.operations for the
+// notifications policy consumer, using the shared
+// {channel,recipient,templateId,variables} envelope.
+func (b *Bus) PublishAlert(ctx context.Context, channel, recipient, templateID string, variables map[string]string, key string) {
+	if b == nil || !b.Enabled() || recipient == "" || templateID == "" {
+		return
+	}
+	vars := map[string]any{}
+	for k, v := range variables {
+		vars[k] = v
+	}
+	if channel == "" {
+		channel = defaultNotifyChannel()
+	}
+	_ = b.Publish(ctx, TypeAlertRaised, map[string]any{
+		"channel":    channel,
+		"recipient":  recipient,
+		"templateId": templateID,
+		"variables":  vars,
+	})
+}
+
+func defaultNotifyChannel() string {
+	if ch := strings.TrimSpace(os.Getenv("NOTIFY_CHANNEL")); ch != "" {
+		return ch
+	}
+	return "email"
+}
+
+// DefaultNotifyRecipient is the fallback recipient (ops/finance desk).
+func DefaultNotifyRecipient() string {
+	return strings.TrimSpace(os.Getenv("NOTIFY_DEFAULT_RECIPIENT"))
 }
 
 func eventKeyFromData(data any, fallback string) string {
