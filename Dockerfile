@@ -14,7 +14,18 @@ ENV PLATFORM_GO_DEP=/deps/platform-go
 FROM base AS platform-go-clone
 ARG IAG_META_REF=main
 ARG IAG_META_REPO=https://github.com/AlexanderKiyingi/IAG_multi_backend.git
-RUN git clone --depth 1 --branch "${IAG_META_REF}" "${IAG_META_REPO}" /tmp/iag \
+# The meta-repo is private, so an anonymous clone fails in CI with
+# "could not read Username for 'https://github.com'". Provide a GitHub token as
+# a BuildKit secret (id=gh_token) and it is injected into the clone URL without
+# ever landing in an image layer. When no secret is mounted (e.g. a public/
+# monorepo build) the clone falls back to the plain anonymous URL.
+RUN --mount=type=secret,id=gh_token \
+    set -e; \
+    CLONE_URL="${IAG_META_REPO}"; \
+    if [ -s /run/secrets/gh_token ]; then \
+      CLONE_URL=$(printf '%s' "${IAG_META_REPO}" | sed "s#https://#https://x-access-token:$(cat /run/secrets/gh_token)@#"); \
+    fi; \
+    git clone --depth 1 --branch "${IAG_META_REF}" "${CLONE_URL}" /tmp/iag \
     && mv /tmp/iag/shared/platform-go "${PLATFORM_GO_DEP}" \
     && rm -rf /tmp/iag
 
