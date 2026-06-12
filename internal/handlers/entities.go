@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/iag/dms/backend/internal/events"
 	"github.com/iag/dms/backend/internal/models"
 	"github.com/iag/dms/backend/internal/store"
 	"github.com/alvor-technologies/iag-platform-go/apierr"
@@ -91,6 +92,13 @@ func (h *API) CreateOrder(c *gin.Context) {
 	}
 	o := h.Repo.CreateOrder(in)
 	h.publish(c, "dms.order.created", gin.H{"id": o.ID, "status": o.Status})
+	// Notify the ops/sales desk when a new distribution order is placed.
+	if recipient := events.DefaultNotifyRecipient(); recipient != "" && h.Events != nil {
+		h.Events.PublishAlert(c.Request.Context(), "", recipient, "dms.alert", map[string]string{
+			"Title": fmt.Sprintf("New distribution order: %v", o.ID),
+			"Body":  fmt.Sprintf("Order %v was created (status %v).", o.ID, o.Status),
+		}, fmt.Sprintf("dms-order-%v", o.ID))
+	}
 	h.recordAudit(c, "CreateOrder", store.AuditDetail("order", o.ID, "created"))
 	c.JSON(http.StatusCreated, o)
 }
