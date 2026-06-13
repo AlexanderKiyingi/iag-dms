@@ -32,6 +32,7 @@ func (h *API) PatchOutlet(c *gin.Context) {
 		apierr.JSONStatus(c, http.StatusInternalServerError, "update failed")
 		return
 	}
+	h.publish(c, "dms.outlet.updated", gin.H{"id": item.ID, "status": item.Status})
 	h.recordAudit(c, "PatchOutlet", store.AuditDetail("outlet", item.ID, "updated"))
 	c.JSON(http.StatusOK, item)
 }
@@ -72,6 +73,8 @@ func (h *API) CompleteCheckIn(c *gin.Context) {
 		apierr.JSONStatus(c, http.StatusInternalServerError, "complete failed")
 		return
 	}
+	h.publish(c, "dms.checkin.completed", gin.H{"id": item.ID, "repId": item.RepID})
+	h.recordAudit(c, "CompleteCheckIn", store.AuditDetail("check-in", item.ID, "completed"))
 	c.JSON(http.StatusOK, item)
 }
 
@@ -82,6 +85,7 @@ func (h *API) CreateClaim(c *gin.Context) {
 		return
 	}
 	cl := h.Repo.CreateClaim(in)
+	h.publish(c, "dms.claim.created", gin.H{"id": cl.ID, "type": cl.Type})
 	h.recordAudit(c, "CreateClaim", store.AuditDetail("claim", cl.ID, "created"))
 	c.JSON(http.StatusCreated, cl)
 }
@@ -93,6 +97,8 @@ func (h *API) CreatePromotion(c *gin.Context) {
 		return
 	}
 	p := h.Repo.CreatePromotion(in)
+	h.publish(c, "dms.promotion.created", gin.H{"id": p.ID, "name": p.Name})
+	h.recordAudit(c, "CreatePromotion", store.AuditDetail("promotion", p.ID, "created"))
 	c.JSON(http.StatusCreated, p)
 }
 

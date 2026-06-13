@@ -87,10 +87,12 @@ func main() {
 
 	verifier := platformauth.NewVerifier(cfg.JWKSURL, cfg.JWTIssuer, cfg.Audience)
 	jwksCtx, jwksCancel := context.WithTimeout(ctx, 10*time.Second)
+	// A transient JWKS fetch failure must not crash-loop the service on boot.
+	// Degrade to the background refresh loop instead — inbound requests fail
+	// closed (401) until keys are available, matching the fleet-wide
+	// JWKS bootstrap-resilience pattern.
 	if err := verifier.Refresh(jwksCtx); err != nil {
-		jwksCancel()
-		slog.Error("jwks refresh", "err", err)
-		os.Exit(1)
+		slog.Warn("jwks refresh failed on boot; serving once keys load", "err", err)
 	}
 	jwksCancel()
 	verifier.StartRefreshLoop(ctx, 15*time.Minute)

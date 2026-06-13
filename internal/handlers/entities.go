@@ -3,12 +3,14 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/iag/dms/backend/internal/events"
+	"github.com/iag/dms/backend/internal/financeclient"
 	"github.com/iag/dms/backend/internal/models"
 	"github.com/iag/dms/backend/internal/store"
 	"github.com/alvor-technologies/iag-platform-go/apierr"
@@ -120,6 +122,8 @@ func (h *API) PatchOrderStatus(c *gin.Context) {
 		apierr.JSONStatus(c, http.StatusInternalServerError, "update failed")
 		return
 	}
+	h.publish(c, "dms.order.status_changed", gin.H{"id": item.ID, "status": item.Status})
+	h.recordAudit(c, "PatchOrderStatus", store.AuditDetail("order", item.ID, "status → "+item.Status))
 	c.JSON(http.StatusOK, item)
 }
 
@@ -163,6 +167,7 @@ func (h *API) CreateCheckIn(c *gin.Context) {
 	}
 	ci := h.Repo.CreateCheckIn(in)
 	h.publish(c, "dms.checkin.created", gin.H{"id": ci.ID, "repId": ci.RepID})
+	h.recordAudit(c, "CreateCheckIn", store.AuditDetail("check-in", ci.ID, "created"))
 	c.JSON(http.StatusCreated, ci)
 }
 
@@ -174,6 +179,7 @@ func (h *API) CreateVisitReport(c *gin.Context) {
 	}
 	v := h.Repo.CreateVisitReport(in)
 	h.publish(c, "dms.visit.reported", gin.H{"id": v.ID, "outcome": v.Outcome})
+	h.recordAudit(c, "CreateVisitReport", store.AuditDetail("visit-report", v.ID, "created"))
 	c.JSON(http.StatusCreated, v)
 }
 
@@ -238,6 +244,31 @@ func (h *API) CreateInvoice(c *gin.Context) {
 		return
 	}
 	inv := h.Repo.CreateInvoice(in)
+
+	// Finance is the system of record for invoices. When wired, push the
+	// invoice upstream so the number we return — and every subsequent
+	// read-through (ListInvoices/GetInvoice/FinanceSummary) — stays
+	// consistent with the finance ledger. A local copy is still kept so the
+	// service degrades gracefully if finance is unreachable.
+	if h.Finance != nil && h.Finance.Enabled() {
+		req := financeclient.CreateInvoiceRequest{
+			Customer: in.DistributorID,
+			Total:    in.AmountUGX,
+			Status:   "open",
+		}
+		if !in.DueDate.IsZero() {
+			req.Due = in.DueDate.Format("2006-01-02")
+		}
+		if created, err := h.Finance.CreateInvoice(c.Request.Context(), req); err == nil {
+			inv.ID = created.No
+			if created.Status != "" {
+				inv.Status = created.Status
+			}
+		} else {
+			slog.Warn("finance invoice create failed; kept local only", "err", err, "distributorId", in.DistributorID)
+		}
+	}
+
 	h.publish(c, "dms.invoice.created", gin.H{"id": inv.ID})
 	h.recordAudit(c, "CreateInvoice", store.AuditDetail("invoice", inv.ID, "created"))
 	c.JSON(http.StatusCreated, inv)
@@ -246,11 +277,13 @@ func (h *API) CreateInvoice(c *gin.Context) {
 func (h *API) FinanceSummary(c *gin.Context) {
 	if h.Finance != nil && h.Finance.Enabled() {
 		if s, err := h.Finance.Summary(c.Request.Context()); err == nil {
+			// Finance owns AR/overdue/collected. It does not expose DSO, so
+			// derive that from the local invoice ledger rather than reporting 0.
 			c.JSON(http.StatusOK, models.FinanceSummary{
 				ARBalanceUGX: parseAmountUGX(s.ARBalance),
 				OverdueUGX:   parseAmountUGX(s.Overdue),
 				CollectedUGX: parseAmountUGX(s.Collected),
-				DSODays:      0,
+				DSODays:      h.Repo.FinanceSummary().DSODays,
 			})
 			return
 		}
