@@ -64,6 +64,8 @@ const outlets = await dmsApi.outlets(accessToken, { limit: 20 });
 ```
 
 - Paginated lists use `{ items, data, meta }` — see [`docs/dms-api.ts`](docs/dms-api.ts).
+- Full frontend guide (auth, RBAC gating, endpoint reference, events): [`docs/FRONTEND_INTEGRATION.md`](docs/FRONTEND_INTEGRATION.md).
+- React Query hooks: [`docs/dms-react-query.ts`](docs/dms-react-query.ts).
 - Set `FINANCE_URL` to proxy finance summary/invoices from iag-finance.
 - Set `CONSUMER_ENABLED=true` to ingest CRM events into DMS signals.
 

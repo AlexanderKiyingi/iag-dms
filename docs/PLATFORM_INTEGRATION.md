@@ -14,7 +14,7 @@ Every API call must include `Authorization: Bearer <token>` with audience **`iag
 
 ## Next.js
 
-See [`README.md`](../README.md) and [`docs/dms-api.ts`](dms-api.ts). Browser calls go to `http://localhost:8080/api/v1/dms/v1`, not `:4010`.
+Frontend developer guide: [`FRONTEND_INTEGRATION.md`](FRONTEND_INTEGRATION.md) (auth, response envelopes, RBAC gating, full endpoint reference, mutation→event map). Clients: [`dms-api.ts`](dms-api.ts) (typed fetch) and [`dms-react-query.ts`](dms-react-query.ts) (hooks). Browser calls go to `http://localhost:8080/api/v1/dms/v1`, not `:4010`.
 
 ## Environment
 
@@ -53,7 +53,7 @@ Paginated lists return `{ items, data, meta }` for CRM/Next.js compatibility.
 
 | Topic | Direction | Types |
 |-------|-----------|-------|
-| `iag.operations` | DMS → platform | `dms.outlet.created`, `dms.order.created`, `dms.checkin.created`, `dms.visit.reported`, `dms.invoice.created`, `dms.dispatch.created` |
+| `iag.operations` | DMS → platform | `dms.outlet.created`, `dms.outlet.updated`, `dms.order.created`, `dms.order.status_changed`, `dms.checkin.created`, `dms.checkin.completed`, `dms.visit.reported`, `dms.promotion.created`, `dms.claim.created`, `dms.invoice.created`, `dms.dispatch.created` |
 | `iag.commercial` | CRM → DMS | `crm.deal.won`, `crm.lead.converted`, `crm.outlet.synced` (signals + `crm_ref`) |
 
 Outbound events use a transactional **outbox** (`dms_event_outbox`) when Postgres is enabled.
