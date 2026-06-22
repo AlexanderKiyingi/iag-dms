@@ -80,7 +80,7 @@ func (h *API) CompleteCheckIn(c *gin.Context) {
 
 func (h *API) CreateClaim(c *gin.Context) {
 	var in models.ClaimInput
-	if err := c.ShouldBindJSON(&in); err != nil || in.OutletID == "" || in.Type == "" {
+	if err := bindJSONCoerced(c, &in); err != nil || in.OutletID == "" || in.Type == "" {
 		badRequest(c, "outletId and type are required")
 		return
 	}
@@ -92,7 +92,7 @@ func (h *API) CreateClaim(c *gin.Context) {
 
 func (h *API) CreatePromotion(c *gin.Context) {
 	var in models.PromotionInput
-	if err := c.ShouldBindJSON(&in); err != nil || in.Name == "" {
+	if err := bindJSONCoerced(c, &in); err != nil || in.Name == "" {
 		badRequest(c, "name is required")
 		return
 	}

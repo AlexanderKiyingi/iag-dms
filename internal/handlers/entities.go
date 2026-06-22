@@ -50,7 +50,7 @@ func (h *API) GetOutlet(c *gin.Context) {
 
 func (h *API) CreateOutlet(c *gin.Context) {
 	var in models.OutletInput
-	if err := c.ShouldBindJSON(&in); err != nil || in.Name == "" || in.Channel == "" || in.DistributorID == "" {
+	if err := bindJSONCoerced(c, &in); err != nil || in.Name == "" || in.Channel == "" || in.DistributorID == "" {
 		badRequest(c, "name, channel, and distributorId are required")
 		return
 	}
@@ -88,7 +88,7 @@ func (h *API) GetOrder(c *gin.Context) {
 
 func (h *API) CreateOrder(c *gin.Context) {
 	var in models.OrderInput
-	if err := c.ShouldBindJSON(&in); err != nil || in.OutletID == "" {
+	if err := bindJSONCoerced(c, &in); err != nil || in.OutletID == "" {
 		badRequest(c, "outletId is required")
 		return
 	}
@@ -161,7 +161,7 @@ func (h *API) CheckInStats(c *gin.Context) {
 
 func (h *API) CreateCheckIn(c *gin.Context) {
 	var in models.CheckInInput
-	if err := c.ShouldBindJSON(&in); err != nil || in.RepID == "" || in.OutletID == "" {
+	if err := bindJSONCoerced(c, &in); err != nil || in.RepID == "" || in.OutletID == "" {
 		badRequest(c, "repId and outletId are required")
 		return
 	}
@@ -173,7 +173,7 @@ func (h *API) CreateCheckIn(c *gin.Context) {
 
 func (h *API) CreateVisitReport(c *gin.Context) {
 	var in models.VisitReportInput
-	if err := c.ShouldBindJSON(&in); err != nil || in.RepID == "" || in.OutletID == "" {
+	if err := bindJSONCoerced(c, &in); err != nil || in.RepID == "" || in.OutletID == "" {
 		badRequest(c, "repId and outletId are required")
 		return
 	}
@@ -239,7 +239,7 @@ func (h *API) ListInvoices(c *gin.Context) {
 
 func (h *API) CreateInvoice(c *gin.Context) {
 	var in models.InvoiceInput
-	if err := c.ShouldBindJSON(&in); err != nil || in.DistributorID == "" {
+	if err := bindJSONCoerced(c, &in); err != nil || in.DistributorID == "" {
 		badRequest(c, "distributorId is required")
 		return
 	}
