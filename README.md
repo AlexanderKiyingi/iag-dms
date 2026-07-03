@@ -1,6 +1,6 @@
 # iag-dms
 
-Distribution Management Service (**IAG SAFARI** UI in `index.html`) — domain microservice on the IAG platform.
+Distribution Management Service — headless domain microservice on the IAG platform. The browser UI lives in the separate `dmsiag` repo and talks to this service through the gateway.
 
 ## Stack
 
@@ -9,7 +9,7 @@ Distribution Management Service (**IAG SAFARI** UI in `index.html`) — domain m
 - **Platform JWT** — every request requires Bearer token with `aud=iag.dms`
 - **Kafka** events on `iag.operations` (outbox) when `EVENT_BUS_ENABLED=true`
 - **Kafka consumer** on `iag.commercial` for CRM bridge events
-- Static UI + `assets/dms-api.js` client wired to create outlet, check-in, visit report, invoice
+- **Headless JSON API** — no bundled UI; `GET /` returns a small service descriptor
 
 ## Run locally
 
@@ -19,7 +19,7 @@ go mod tidy
 go run .
 ```
 
-Open [http://localhost:4010/](http://localhost:4010/) (direct) or [http://localhost:8080/api/v1/dms/](http://localhost:8080/api/v1/dms/) via gateway.
+The API is reachable directly at `http://localhost:4010/v1/...` or via the gateway at `http://localhost:8080/api/v1/dms/v1/...`. `GET http://localhost:4010/` returns a JSON service descriptor.
 
 ### With Postgres
 

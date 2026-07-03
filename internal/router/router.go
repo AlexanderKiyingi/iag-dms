@@ -34,11 +34,18 @@ func New(opts Options) *gin.Engine {
 	r.Use(securityHeaders())
 	r.Use(corsMiddleware(opts.Cfg.CORSOrigin))
 
-	r.Static("/assets", "./assets")
-	r.StaticFile("/", "./index.html")
-	r.StaticFile("/index.html", "./index.html")
-
 	api := &handlers.API{Repo: opts.Repo, Cfg: opts.Cfg, Events: opts.Events, Finance: opts.Finance}
+
+	// Root service descriptor. The embedded static UI was removed — DMS is a
+	// headless API; the browser UI lives in the separate dmsiag repo and talks
+	// to this service through the gateway.
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"service": opts.Cfg.ServiceName,
+			"status":  "ok",
+			"api":     "/v1",
+		})
+	})
 
 	r.GET("/healthz", api.Health)
 	r.GET("/health", api.Health)
@@ -157,17 +164,15 @@ func registerIntelligenceRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 }
 
 // securityHeaders emits the platform-wide baseline browser security header
-// set. The Content-Security-Policy uses the permissive shape because this
-// service mounts a static SPA (/, /index.html, /assets/*) — connect-src /
-// img-src / style-src / font-src are allow-listed to 'self' (plus data: for
-// inline images and fonts) so the bundled frontend can fetch its own assets.
+// set. DMS is a headless JSON API (no bundled UI), so the Content-Security-Policy
+// locks everything down to 'none' — nothing is meant to be rendered in a browser.
 //
 // HSTS is gated on TLS termination (direct TLS or trusted X-Forwarded-Proto)
 // so plain-HTTP dev environments (http://localhost) do not lock browsers
 // into HTTPS for the developer's whole domain.
 func securityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'")
+		c.Header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")

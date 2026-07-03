@@ -2,7 +2,7 @@ package models
 
 import "time"
 
-// Page domains mirror index.html sidebar (PAGE_TITLES / data-page).
+// Page domains mirror the DMS frontend (dmsiag) sidebar sections.
 
 type Overview struct {
 	KPIs           []KPI            `json:"kpis"`

@@ -47,8 +47,6 @@ FROM alpine:3.21 AS monorepo
 RUN apk add --no-cache ca-certificates tzdata wget
 WORKDIR /app
 COPY --from=build-monorepo /dms /app/dms
-COPY --from=build-monorepo /src/services/operations/dms/index.html /app/index.html
-COPY --from=build-monorepo /src/services/operations/dms/assets /app/assets
 ENV PORT=4010 \
     GIN_MODE=release \
     LOG_FORMAT=json \
@@ -64,8 +62,6 @@ FROM alpine:3.21 AS standalone
 RUN apk add --no-cache ca-certificates tzdata wget
 WORKDIR /app
 COPY --from=build-standalone /dms /app/dms
-COPY --from=build-standalone /src/index.html /app/index.html
-COPY --from=build-standalone /src/assets /app/assets
 ENV PORT=4010 \
     GIN_MODE=release \
     LOG_FORMAT=json \

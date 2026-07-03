@@ -8,7 +8,7 @@ Distribution Management Service runs behind the **API gateway** with **iag-authe
 |-------------|----------|
 | `/api/v1/dms/v1/*` | DMS `:4010/v1/*` |
 | `/api/v1/dms/health` | DMS `:4010/health` |
-| `/api/v1/dms/` | DMS UI (`index.html`) |
+| `/api/v1/dms/` | DMS service descriptor (JSON) |
 
 Every API call must include `Authorization: Bearer <token>` with audience **`iag.dms`**. There is no `AUTH_MODE`, gateway trust header, or dev bypass in production.
 

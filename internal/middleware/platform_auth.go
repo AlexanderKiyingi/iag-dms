@@ -26,10 +26,10 @@ func NewPlatformAuth(verifier *platformauth.Verifier) *PlatformAuth {
 
 func isPublicProbePath(path string) bool {
 	switch path {
-	case "/health", "/healthz", "/ready", "/", "/index.html":
+	case "/health", "/healthz", "/ready", "/":
 		return true
 	default:
-		return strings.HasPrefix(path, "/assets/")
+		return false
 	}
 }
 

@@ -62,8 +62,8 @@ per-call, so wherever you keep it, pass it into `dmsFetch`/the hooks.
 
 ### Public (no-token) paths
 
-`/`, `/index.html`, `/assets/*`, `/health`, `/healthz`, `/ready` are open (probes and
-the bundled SPA). Everything under `/v1/*` requires a token.
+`/`, `/health`, `/healthz`, `/ready` are open (service descriptor and probes).
+Everything under `/v1/*` requires a token.
 
 ---
 

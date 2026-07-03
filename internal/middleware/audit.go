@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,8 +16,7 @@ func RequestAudit(repo *store.Repository) gin.HandlerFunc {
 			return
 		}
 		path := c.Request.URL.Path
-		if path == "/health" || path == "/healthz" || path == "/ready" ||
-			path == "/" || path == "/index.html" || strings.HasPrefix(path, "/assets/") {
+		if path == "/health" || path == "/healthz" || path == "/ready" || path == "/" {
 			return
 		}
 		duration := int(time.Since(start).Milliseconds())

@@ -152,7 +152,7 @@ export const dmsApi = {
   adminMonitoringActivity: (token?: string) => dmsFetch("/admin/monitoring/activity", { token }),
 };
 
-/** Map sidebar page ids (index.html) to primary data loaders for Next.js routes. */
+/** Map sidebar page ids to primary data loaders for Next.js routes. */
 export const DMS_PAGE_LOADERS = {
   overview: (token?: string) => dmsApi.overview(token),
   network: (token?: string) => dmsApi.distributors(token),
