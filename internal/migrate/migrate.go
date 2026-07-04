@@ -14,8 +14,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// This service owns the `dms` schema on the shared Railway database. The ledger
+// is schema-qualified so it can never collide with another service's global
+// public.schema_migrations. db.Connect pins search_path to `dms, public`.
 const schemaMigrationsDDL = `
-CREATE TABLE IF NOT EXISTS schema_migrations (
+CREATE TABLE IF NOT EXISTS dms.schema_migrations (
     version    TEXT PRIMARY KEY,
     checksum   TEXT NOT NULL,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -28,12 +31,22 @@ type Migration struct {
 }
 
 func Up(ctx context.Context, pool *pgxpool.Pool, fsys fs.FS) ([]string, error) {
-	if _, err := pool.Exec(ctx, schemaMigrationsDDL); err != nil {
-		return nil, fmt.Errorf("create schema_migrations: %w", err)
-	}
 	migs, err := load(fsys)
 	if err != nil {
 		return nil, err
+	}
+	if _, err := pool.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS dms`); err != nil {
+		return nil, fmt.Errorf("create schema dms: %w", err)
+	}
+	if _, err := pool.Exec(ctx, schemaMigrationsDDL); err != nil {
+		return nil, fmt.Errorf("create schema_migrations: %w", err)
+	}
+	// One-time cutover from the shared global public.schema_migrations: stamp this
+	// service's already-applied versions into the per-service ledger with their
+	// current file checksums, so nothing re-runs and the checksum-mismatch guard
+	// below cannot fire against tables that already exist in public.
+	if err := seedFromLegacyLedger(ctx, pool, migs); err != nil {
+		return nil, fmt.Errorf("seed from legacy ledger: %w", err)
 	}
 	applied, err := loadApplied(ctx, pool)
 	if err != nil {
@@ -54,6 +67,36 @@ func Up(ctx context.Context, pool *pgxpool.Pool, fsys fs.FS) ([]string, error) {
 		}
 	}
 	return newlyApplied, nil
+}
+
+// seedFromLegacyLedger stamps this service's shipped versions into dms's ledger
+// using the CURRENT file checksums, for any version already recorded in a legacy
+// global public.schema_migrations. Using the file checksum keeps the
+// checksum-mismatch guard in Up from firing during the shared-database cutover —
+// those objects already exist in public and resolve via the search_path
+// fallback. Idempotent; no-op on a fresh database.
+func seedFromLegacyLedger(ctx context.Context, pool *pgxpool.Pool, migs []Migration) error {
+	var hasLegacy bool
+	if err := pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.tables
+			WHERE table_schema = 'public' AND table_name = 'schema_migrations'
+		)`).Scan(&hasLegacy); err != nil {
+		return err
+	}
+	if !hasLegacy {
+		return nil
+	}
+	for _, m := range migs {
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO dms.schema_migrations (version, checksum)
+			SELECT $1, $2
+			WHERE EXISTS (SELECT 1 FROM public.schema_migrations WHERE version = $1)
+			ON CONFLICT (version) DO NOTHING`, m.Version, m.Checksum); err != nil {
+			return fmt.Errorf("seed %s: %w", m.Version, err)
+		}
+	}
+	return nil
 }
 
 func load(fsys fs.FS) ([]Migration, error) {
@@ -88,7 +131,7 @@ type appliedRow struct {
 }
 
 func loadApplied(ctx context.Context, pool *pgxpool.Pool) (map[string]appliedRow, error) {
-	rows, err := pool.Query(ctx, `SELECT version, checksum FROM schema_migrations`)
+	rows, err := pool.Query(ctx, `SELECT version, checksum FROM dms.schema_migrations`)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +157,7 @@ func apply(ctx context.Context, pool *pgxpool.Pool, m Migration) error {
 		return err
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO schema_migrations (version, checksum) VALUES ($1, $2)`,
+		`INSERT INTO dms.schema_migrations (version, checksum) VALUES ($1, $2)`,
 		m.Version, m.Checksum); err != nil {
 		if strings.Contains(err.Error(), "23505") {
 			return errors.New("concurrent migration")
