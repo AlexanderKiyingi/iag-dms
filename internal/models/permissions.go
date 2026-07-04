@@ -18,6 +18,7 @@ func PermissionDescriptors() []PermissionDescriptor {
 		{Name: "dms.manage_claims", Description: "Create claims"},
 		{Name: "dms.manage_promotions", Description: "Create trade promotions"},
 		{Name: "dms.manage_dispatch", Description: "Create dispatch trips"},
+		{Name: "dms.manage_pricing", Description: "Create, edit and approve pricing templates"},
 		{Name: "dms.run_reports", Description: "Run and export reports"},
 		{Name: "dms.insights.read", Description: "View distribution signals and analytics"},
 		{Name: "dms.audit.read", Description: "View audit log"},
@@ -32,7 +33,7 @@ func PermissionCatalogData() map[string]any {
 		"dms.view_overview", "dms.view_outlets", "dms.manage_outlets",
 		"dms.view_orders", "dms.manage_orders", "dms.field_checkin",
 		"dms.view_finance", "dms.manage_invoices", "dms.manage_claims",
-		"dms.manage_promotions", "dms.manage_dispatch", "dms.run_reports",
+		"dms.manage_promotions", "dms.manage_dispatch", "dms.manage_pricing", "dms.run_reports",
 		"dms.insights.read", "dms.audit.read", "dms.audit.create",
 		"dms.admin.read", "dms.admin.update",
 	}

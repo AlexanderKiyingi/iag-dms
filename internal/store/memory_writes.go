@@ -123,6 +123,183 @@ func (m *memoryState) createDispatch(in models.DispatchInput) models.Dispatch {
 	return d
 }
 
+// ---- Generic deletes -------------------------------------------------------
+
+// deleteByID removes the first element whose .ID == id from the slice pointed to
+// by *slice, returning ErrNotFound if absent.
+func deleteByID[T any](slice *[]T, id string, idOf func(T) string) error {
+	for i, item := range *slice {
+		if idOf(item) == id {
+			*slice = append((*slice)[:i], (*slice)[i+1:]...)
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+func (m *memoryState) deleteOutlet(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return deleteByID(&m.outlets, id, func(o models.Outlet) string { return o.ID })
+}
+
+func (m *memoryState) deleteOrder(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return deleteByID(&m.orders, id, func(o models.Order) string { return o.ID })
+}
+
+func (m *memoryState) deleteCheckIn(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return deleteByID(&m.checkIns, id, func(c models.CheckIn) string { return c.ID })
+}
+
+func (m *memoryState) deletePromotion(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return deleteByID(&m.promos, id, func(p models.Promotion) string { return p.ID })
+}
+
+func (m *memoryState) deleteClaim(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return deleteByID(&m.claims, id, func(c models.Claim) string { return c.ID })
+}
+
+func (m *memoryState) deleteDispatch(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return deleteByID(&m.dispatches, id, func(d models.Dispatch) string { return d.ID })
+}
+
+func (m *memoryState) deleteInvoice(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return deleteByID(&m.invoices, id, func(i models.Invoice) string { return i.ID })
+}
+
+// ---- Generic patches -------------------------------------------------------
+
+func (m *memoryState) patchPromotion(id string, patch models.PromotionPatch) (models.Promotion, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, p := range m.promos {
+		if p.ID != id {
+			continue
+		}
+		if patch.Name != "" {
+			m.promos[i].Name = patch.Name
+		}
+		if patch.SKU != "" {
+			m.promos[i].SKU = patch.SKU
+		}
+		if patch.Status != "" {
+			m.promos[i].Status = patch.Status
+		}
+		if patch.ROI != nil {
+			m.promos[i].ROI = *patch.ROI
+		}
+		if patch.Outlets != nil {
+			m.promos[i].Outlets = *patch.Outlets
+		}
+		return m.promos[i], nil
+	}
+	return models.Promotion{}, ErrNotFound
+}
+
+func (m *memoryState) patchClaim(id string, patch models.ClaimPatch) (models.Claim, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, c := range m.claims {
+		if c.ID != id {
+			continue
+		}
+		if patch.Type != "" {
+			m.claims[i].Type = patch.Type
+		}
+		if patch.Status != "" {
+			m.claims[i].Status = patch.Status
+		}
+		if patch.AmountUGX != nil {
+			m.claims[i].AmountUGX = *patch.AmountUGX
+		}
+		return m.claims[i], nil
+	}
+	return models.Claim{}, ErrNotFound
+}
+
+func (m *memoryState) patchDispatch(id string, patch models.DispatchPatch) (models.Dispatch, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, d := range m.dispatches {
+		if d.ID != id {
+			continue
+		}
+		if patch.TruckID != "" {
+			m.dispatches[i].TruckID = patch.TruckID
+		}
+		if patch.Driver != "" {
+			m.dispatches[i].Driver = patch.Driver
+		}
+		if patch.Status != "" {
+			m.dispatches[i].Status = patch.Status
+		}
+		if patch.ETA != "" {
+			m.dispatches[i].ETA = patch.ETA
+		}
+		m.dispatches[i].UpdatedAt = now()
+		return m.dispatches[i], nil
+	}
+	return models.Dispatch{}, ErrNotFound
+}
+
+func (m *memoryState) setInvoiceEFRIS(id, status, receipt string) (models.Invoice, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, inv := range m.invoices {
+		if inv.ID == id {
+			m.invoices[i].EFRISStatus = status
+			m.invoices[i].URAReceipt = receipt
+			return m.invoices[i], nil
+		}
+	}
+	return models.Invoice{}, ErrNotFound
+}
+
+func (m *memoryState) setInvoiceDocument(id, url string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, inv := range m.invoices {
+		if inv.ID == id {
+			m.invoices[i].DocumentURL = url
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+func (m *memoryState) patchInvoice(id string, patch models.InvoicePatch) (models.Invoice, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, inv := range m.invoices {
+		if inv.ID != id {
+			continue
+		}
+		if patch.AmountUGX != nil {
+			m.invoices[i].AmountUGX = *patch.AmountUGX
+		}
+		if patch.Status != "" {
+			m.invoices[i].Status = patch.Status
+		}
+		if patch.DueDate != nil {
+			m.invoices[i].DueDate = *patch.DueDate
+		}
+		return m.invoices[i], nil
+	}
+	return models.Invoice{}, ErrNotFound
+}
+
 func (m *memoryState) runReport(in models.ReportRunInput) models.ReportRun {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {

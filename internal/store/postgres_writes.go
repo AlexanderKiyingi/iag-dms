@@ -54,13 +54,39 @@ func (r *Repository) pgPatchOutlet(ctx context.Context, id string, patch models.
 func (r *Repository) pgGetInvoice(ctx context.Context, id string) (models.Invoice, error) {
 	var inv models.Invoice
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, distributor_id, distributor_name, amount_ugx, due_date, status, COALESCE(order_id,'')
+		SELECT id, distributor_id, distributor_name, amount_ugx, due_date, status, COALESCE(order_id,''),
+		       COALESCE(efris_status,''), COALESCE(ura_receipt,''), COALESCE(document_url,'')
 		FROM dms_invoices WHERE id = $1`, id).Scan(
-		&inv.ID, &inv.DistributorID, &inv.Distributor, &inv.AmountUGX, &inv.DueDate, &inv.Status, &inv.OrderID)
+		&inv.ID, &inv.DistributorID, &inv.Distributor, &inv.AmountUGX, &inv.DueDate, &inv.Status, &inv.OrderID,
+		&inv.EFRISStatus, &inv.URAReceipt, &inv.DocumentURL)
 	if err == pgx.ErrNoRows {
 		return inv, ErrNotFound
 	}
 	return inv, err
+}
+
+// SetInvoiceEFRIS records fiscalisation status + URA receipt on an invoice.
+func (r *Repository) SetInvoiceEFRIS(id, status, receipt string) (models.Invoice, error) {
+	if r.pool != nil {
+		tag, err := r.pool.Exec(r.bg(), `UPDATE dms_invoices SET efris_status=$2, ura_receipt=$3 WHERE id=$1`, id, status, receipt)
+		if err != nil {
+			return models.Invoice{}, err
+		}
+		if tag.RowsAffected() == 0 {
+			return models.Invoice{}, ErrNotFound
+		}
+		return r.pgGetInvoice(r.bg(), id)
+	}
+	return r.mem.setInvoiceEFRIS(id, status, receipt)
+}
+
+// SetInvoiceDocument records the generated document URL on an invoice.
+func (r *Repository) SetInvoiceDocument(id, url string) error {
+	if r.pool != nil {
+		_, err := r.pool.Exec(r.bg(), `UPDATE dms_invoices SET document_url=$2 WHERE id=$1`, id, url)
+		return err
+	}
+	return r.mem.setInvoiceDocument(id, url)
 }
 
 func (r *Repository) pgListVisitReports(ctx context.Context, opts ListOpts) ([]models.VisitReport, int) {
@@ -143,6 +169,173 @@ func (r *Repository) pgCreateDispatch(ctx context.Context, in models.DispatchInp
 		_, _ = r.pool.Exec(ctx, `INSERT INTO dms_dispatch_orders (dispatch_id, order_id) VALUES ($1,$2)`, d.ID, oid)
 	}
 	return d
+}
+
+// ---- Generic deletes -------------------------------------------------------
+
+func (r *Repository) pgDelete(ctx context.Context, table, id string) error {
+	tag, err := r.pool.Exec(ctx, fmt.Sprintf(`DELETE FROM %s WHERE id=$1`, table), id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) pgDeleteOutlet(ctx context.Context, id string) error {
+	return r.pgDelete(ctx, "dms_outlets", id)
+}
+
+func (r *Repository) pgDeleteOrder(ctx context.Context, id string) error {
+	return r.pgDelete(ctx, "dms_orders", id)
+}
+
+func (r *Repository) pgDeleteCheckIn(ctx context.Context, id string) error {
+	return r.pgDelete(ctx, "dms_check_ins", id)
+}
+
+func (r *Repository) pgDeletePromotion(ctx context.Context, id string) error {
+	return r.pgDelete(ctx, "dms_promotions", id)
+}
+
+func (r *Repository) pgDeleteClaim(ctx context.Context, id string) error {
+	return r.pgDelete(ctx, "dms_claims", id)
+}
+
+func (r *Repository) pgDeleteDispatch(ctx context.Context, id string) error {
+	if err := r.pgDelete(ctx, "dms_dispatches", id); err != nil {
+		return err
+	}
+	_, _ = r.pool.Exec(ctx, `DELETE FROM dms_dispatch_orders WHERE dispatch_id=$1`, id)
+	return nil
+}
+
+func (r *Repository) pgDeleteInvoice(ctx context.Context, id string) error {
+	return r.pgDelete(ctx, "dms_invoices", id)
+}
+
+// ---- Generic patches -------------------------------------------------------
+
+func (r *Repository) pgPatchPromotion(ctx context.Context, id string, patch models.PromotionPatch) (models.Promotion, error) {
+	var p models.Promotion
+	err := r.pool.QueryRow(ctx, `SELECT id, name, sku, roi, status, outlets FROM dms_promotions WHERE id=$1`, id).
+		Scan(&p.ID, &p.Name, &p.SKU, &p.ROI, &p.Status, &p.Outlets)
+	if err == pgx.ErrNoRows {
+		return p, ErrNotFound
+	}
+	if err != nil {
+		return p, err
+	}
+	if patch.Name != "" {
+		p.Name = patch.Name
+	}
+	if patch.SKU != "" {
+		p.SKU = patch.SKU
+	}
+	if patch.Status != "" {
+		p.Status = patch.Status
+	}
+	if patch.ROI != nil {
+		p.ROI = *patch.ROI
+	}
+	if patch.Outlets != nil {
+		p.Outlets = *patch.Outlets
+	}
+	_, err = r.pool.Exec(ctx, `UPDATE dms_promotions SET name=$2, sku=$3, roi=$4, status=$5, outlets=$6 WHERE id=$1`,
+		p.ID, p.Name, p.SKU, p.ROI, p.Status, p.Outlets)
+	return p, err
+}
+
+func (r *Repository) pgPatchClaim(ctx context.Context, id string, patch models.ClaimPatch) (models.Claim, error) {
+	var c models.Claim
+	err := r.pool.QueryRow(ctx, `SELECT id, outlet_id, claim_type, status, amount_ugx, created_at FROM dms_claims WHERE id=$1`, id).
+		Scan(&c.ID, &c.OutletID, &c.Type, &c.Status, &c.AmountUGX, &c.CreatedAt)
+	if err == pgx.ErrNoRows {
+		return c, ErrNotFound
+	}
+	if err != nil {
+		return c, err
+	}
+	if patch.Type != "" {
+		c.Type = patch.Type
+	}
+	if patch.Status != "" {
+		c.Status = patch.Status
+	}
+	if patch.AmountUGX != nil {
+		c.AmountUGX = *patch.AmountUGX
+	}
+	_, err = r.pool.Exec(ctx, `UPDATE dms_claims SET claim_type=$2, status=$3, amount_ugx=$4 WHERE id=$1`,
+		c.ID, c.Type, c.Status, c.AmountUGX)
+	return c, err
+}
+
+func (r *Repository) pgPatchDispatch(ctx context.Context, id string, patch models.DispatchPatch) (models.Dispatch, error) {
+	var d models.Dispatch
+	err := r.pool.QueryRow(ctx, `SELECT id, truck_id, driver, status, eta, updated_at FROM dms_dispatches WHERE id=$1`, id).
+		Scan(&d.ID, &d.TruckID, &d.Driver, &d.Status, &d.ETA, &d.UpdatedAt)
+	if err == pgx.ErrNoRows {
+		return d, ErrNotFound
+	}
+	if err != nil {
+		return d, err
+	}
+	if patch.TruckID != "" {
+		d.TruckID = patch.TruckID
+	}
+	if patch.Driver != "" {
+		d.Driver = patch.Driver
+	}
+	if patch.Status != "" {
+		d.Status = patch.Status
+	}
+	if patch.ETA != "" {
+		d.ETA = patch.ETA
+	}
+	d.UpdatedAt = now()
+	_, err = r.pool.Exec(ctx, `UPDATE dms_dispatches SET truck_id=$2, driver=$3, status=$4, eta=$5, updated_at=$6 WHERE id=$1`,
+		d.ID, d.TruckID, d.Driver, d.Status, d.ETA, d.UpdatedAt)
+	if err == nil {
+		d.OrderIDs = r.pgDispatchOrderIDs(ctx, d.ID)
+	}
+	return d, err
+}
+
+func (r *Repository) pgDispatchOrderIDs(ctx context.Context, dispatchID string) []string {
+	rows, err := r.pool.Query(ctx, `SELECT order_id FROM dms_dispatch_orders WHERE dispatch_id=$1`, dispatchID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var oid string
+		if rows.Scan(&oid) == nil {
+			out = append(out, oid)
+		}
+	}
+	return out
+}
+
+func (r *Repository) pgPatchInvoice(ctx context.Context, id string, patch models.InvoicePatch) (models.Invoice, error) {
+	inv, err := r.pgGetInvoice(ctx, id)
+	if err != nil {
+		return inv, err
+	}
+	if patch.AmountUGX != nil {
+		inv.AmountUGX = *patch.AmountUGX
+	}
+	if patch.Status != "" {
+		inv.Status = patch.Status
+	}
+	if patch.DueDate != nil {
+		inv.DueDate = *patch.DueDate
+	}
+	_, err = r.pool.Exec(ctx, `UPDATE dms_invoices SET amount_ugx=$2, status=$3, due_date=$4 WHERE id=$1`,
+		inv.ID, inv.AmountUGX, inv.Status, inv.DueDate)
+	return inv, err
 }
 
 func (r *Repository) pgRunReport(ctx context.Context, in models.ReportRunInput) models.ReportRun {

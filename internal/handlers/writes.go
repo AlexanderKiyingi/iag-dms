@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -114,6 +115,138 @@ func (h *API) CreateDispatch(c *gin.Context) {
 	c.JSON(http.StatusCreated, d)
 }
 
+// ---- Generic patches -------------------------------------------------------
+
+func (h *API) PatchPromotion(c *gin.Context) {
+	var patch models.PromotionPatch
+	if err := bindJSONCoerced(c, &patch); err != nil {
+		badRequest(c, "invalid body")
+		return
+	}
+	item, err := h.Repo.PatchPromotion(c.Param("id"), patch)
+	if err != nil {
+		writeStoreErr(c, err, "update failed")
+		return
+	}
+	h.publish(c, "dms.promotion.updated", gin.H{"id": item.ID, "status": item.Status})
+	h.recordAudit(c, "PatchPromotion", store.AuditDetail("promotion", item.ID, "updated"))
+	c.JSON(http.StatusOK, item)
+}
+
+func (h *API) PatchClaim(c *gin.Context) {
+	var patch models.ClaimPatch
+	if err := bindJSONCoerced(c, &patch); err != nil {
+		badRequest(c, "invalid body")
+		return
+	}
+	item, err := h.Repo.PatchClaim(c.Param("id"), patch)
+	if err != nil {
+		writeStoreErr(c, err, "update failed")
+		return
+	}
+	h.publish(c, "dms.claim.updated", gin.H{"id": item.ID, "status": item.Status})
+	h.recordAudit(c, "PatchClaim", store.AuditDetail("claim", item.ID, "updated"))
+	c.JSON(http.StatusOK, item)
+}
+
+func (h *API) PatchDispatch(c *gin.Context) {
+	var patch models.DispatchPatch
+	if err := bindJSONCoerced(c, &patch); err != nil {
+		badRequest(c, "invalid body")
+		return
+	}
+	item, err := h.Repo.PatchDispatch(c.Param("id"), patch)
+	if err != nil {
+		writeStoreErr(c, err, "update failed")
+		return
+	}
+	h.publish(c, "dms.dispatch.updated", gin.H{"id": item.ID, "status": item.Status})
+	h.recordAudit(c, "PatchDispatch", store.AuditDetail("dispatch", item.ID, "updated"))
+	c.JSON(http.StatusOK, item)
+}
+
+func (h *API) PatchInvoice(c *gin.Context) {
+	var patch models.InvoicePatch
+	if err := bindJSONCoerced(c, &patch); err != nil {
+		badRequest(c, "invalid body")
+		return
+	}
+	item, err := h.Repo.PatchInvoice(c.Param("id"), patch)
+	if err != nil {
+		writeStoreErr(c, err, "update failed")
+		return
+	}
+	h.publish(c, "dms.invoice.updated", gin.H{"id": item.ID, "status": item.Status})
+	h.recordAudit(c, "PatchInvoice", store.AuditDetail("invoice", item.ID, "updated"))
+	c.JSON(http.StatusOK, item)
+}
+
+// ---- Deletes ---------------------------------------------------------------
+
+func (h *API) DeleteOutlet(c *gin.Context) {
+	h.deleteEntity(c, "outlet", h.Repo.DeleteOutlet)
+}
+
+func (h *API) DeleteOrder(c *gin.Context) {
+	id := c.Param("id")
+	if ord, err := h.Repo.GetOrder(id); err == nil && strings.EqualFold(ord.Status, "delivered") {
+		conflict(c, "delivered orders cannot be deleted")
+		return
+	}
+	h.deleteEntity(c, "order", h.Repo.DeleteOrder)
+}
+
+func (h *API) DeleteCheckIn(c *gin.Context) {
+	h.deleteEntity(c, "check-in", h.Repo.DeleteCheckIn)
+}
+
+func (h *API) DeletePromotion(c *gin.Context) {
+	h.deleteEntity(c, "promotion", h.Repo.DeletePromotion)
+}
+
+func (h *API) DeleteClaim(c *gin.Context) {
+	h.deleteEntity(c, "claim", h.Repo.DeleteClaim)
+}
+
+func (h *API) DeleteDispatch(c *gin.Context) {
+	h.deleteEntity(c, "dispatch", h.Repo.DeleteDispatch)
+}
+
+func (h *API) DeleteInvoice(c *gin.Context) {
+	id := c.Param("id")
+	if inv, err := h.Repo.GetInvoice(id); err == nil && strings.EqualFold(inv.Status, "paid") {
+		conflict(c, "paid invoices cannot be deleted")
+		return
+	}
+	h.deleteEntity(c, "invoice", h.Repo.DeleteInvoice)
+}
+
+// deleteEntity runs a repository delete, emits a dms.<entity>.deleted event and
+// audit row, and returns 204 (or 404 when the id is unknown).
+func (h *API) deleteEntity(c *gin.Context, entity string, del func(string) error) {
+	id := c.Param("id")
+	if err := del(id); err != nil {
+		writeStoreErr(c, err, "delete failed")
+		return
+	}
+	h.publish(c, "dms."+entity+".deleted", gin.H{"id": id})
+	h.recordAudit(c, "Delete "+entity, store.AuditDetail(entity, id, "deleted"))
+	c.Status(http.StatusNoContent)
+}
+
+// writeStoreErr maps a store error to the right HTTP status.
+func writeStoreErr(c *gin.Context, err error, failMsg string) {
+	if errors.Is(err, store.ErrNotFound) {
+		notFound(c)
+		return
+	}
+	apierr.JSONStatus(c, http.StatusInternalServerError, failMsg)
+}
+
+func conflict(c *gin.Context, msg string) {
+	apierr.JSONStatus(c, http.StatusConflict, msg)
+}
+
 func (h *API) RunReport(c *gin.Context) {
 	var in models.ReportRunInput
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -125,6 +258,15 @@ func (h *API) RunReport(c *gin.Context) {
 		return
 	}
 	run := h.Repo.RunReport(in)
+	// Deliver by email when a recipient was supplied (report studio "schedule
+	// delivery"): the notifications service renders and sends it.
+	if strings.TrimSpace(in.EmailTo) != "" && h.Events != nil && h.Events.Enabled() {
+		h.Events.PublishAlert(c.Request.Context(), "email", in.EmailTo, "dms.alert", map[string]string{
+			"Title": "Report ready: " + run.Name,
+			"Body":  fmt.Sprintf("Your report \"%s\" generated %d rows and is ready.", run.Name, run.RowCount),
+		}, run.JobID)
+		run.Message = "Report generated and emailed to " + in.EmailTo
+	}
 	status := http.StatusOK
 	if run.Status == "queued" {
 		status = http.StatusAccepted

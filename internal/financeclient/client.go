@@ -109,6 +109,25 @@ func (c *Client) CreateInvoice(ctx context.Context, req CreateInvoiceRequest) (I
 	return out, err
 }
 
+// EFRISResult is the fiscalisation outcome from iag-finance's URA EFRIS adapter.
+type EFRISResult struct {
+	DocumentRef  string `json:"documentRef"`
+	Status       string `json:"status"` // submitted | acknowledged | failed
+	URAReceipt   string `json:"uraReceipt"`
+	ErrorMessage string `json:"errorMessage,omitempty"`
+}
+
+// SubmitEFRIS fiscalises an invoice through iag-finance (which owns the URA
+// EFRIS integration). documentRef is the invoice number/ref.
+func (c *Client) SubmitEFRIS(ctx context.Context, documentRef string) (EFRISResult, error) {
+	var out EFRISResult
+	err := c.postJSON(ctx, "/v1/integrations/ura-efris/submit", map[string]string{"documentRef": documentRef}, &out)
+	if out.DocumentRef == "" {
+		out.DocumentRef = documentRef
+	}
+	return out, err
+}
+
 func (c *Client) getJSON(ctx context.Context, path string, dest any) error {
 	return c.do(ctx, http.MethodGet, path, nil, dest)
 }

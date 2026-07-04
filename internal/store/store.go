@@ -53,6 +53,11 @@ type memoryState struct {
 	apiAudit     []apiAuditRow
 	signals      []map[string]any
 
+	journeyAssignments []models.JourneyAssignment
+	pricingVersions    []models.PricingVersion
+	reportSchedules    []models.ReportSchedule
+	attachments        []models.Attachment
+
 	nextOutlet int
 	nextOrder  int
 }

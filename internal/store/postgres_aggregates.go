@@ -10,7 +10,9 @@ import (
 )
 
 func (r *Repository) pgOverview(ctx context.Context) models.Overview {
-	o := r.mem.overview()
+	// Real data only — no seeded demo fallback. An empty DB yields empty
+	// sections and the frontend renders honest empty states.
+	var o models.Overview
 
 	var outletCount, activeOutlets int
 	_ = r.pool.QueryRow(ctx, `SELECT COUNT(*)::int, COUNT(*) FILTER (WHERE status = 'active')::int FROM dms_outlets`).Scan(&outletCount, &activeOutlets)
@@ -24,7 +26,6 @@ func (r *Repository) pgOverview(ctx context.Context) models.Overview {
 		o.KPIs = []models.KPI{
 			{Key: "sell_out", Label: "Sell-Out (Wk)", Value: fmtMillionsUGX(orderSum), Unit: "M UGX", Trend: "▲ from live orders", Sub: fmt.Sprintf("%d open orders", orderCount)},
 			{Key: "outlets", Label: "Active Outlets", Value: fmt.Sprintf("%d", activeOutlets), Unit: fmt.Sprintf("/%d", outletCount), Trend: fmt.Sprintf("▲ %d%% active", prodPct)},
-			{Key: "fill", Label: "Fill Rate", Value: "94.2", Unit: "%", Trend: "OTIF 91%", Sub: "from distributor sell-in"},
 		}
 	}
 
@@ -144,7 +145,7 @@ func (r *Repository) pgJourney(ctx context.Context, repID string) models.Journey
 		WHERE ($1 = '' OR b.rep_id = $1) AND ($2 = '' OR b.id = $2)
 		ORDER BY bo.seq ASC LIMIT 12`, repID, beatID)
 	if err != nil {
-		return r.mem.journey(repID)
+		return models.JourneyDay{Date: time.Now().Format("2006-01-02"), RepID: repID}
 	}
 	defer rows.Close()
 	var stops []models.JourneyStop
@@ -159,7 +160,7 @@ func (r *Repository) pgJourney(ctx context.Context, repID string) models.Journey
 		}
 	}
 	if len(stops) == 0 {
-		return r.mem.journey(repID)
+		return models.JourneyDay{Date: time.Now().Format("2006-01-02"), RepID: repID}
 	}
 	r.applyJourneyCheckInStatus(ctx, repID, stops)
 	return models.JourneyDay{Date: time.Now().Format("2006-01-02"), RepID: repID, Stops: stops}
@@ -207,7 +208,7 @@ func (r *Repository) pgKPIBoard(ctx context.Context) models.KPIBoard {
 		LEFT JOIN dms_check_ins c ON c.rep_id = r.id AND c.status = 'completed'
 		GROUP BY r.id, r.name ORDER BY COUNT(c.id) DESC LIMIT 5`)
 	if err != nil {
-		return r.mem.kpiBoard()
+		return models.KPIBoard{Period: time.Now().Format("Jan 2006")}
 	}
 	defer rows.Close()
 	var board []models.RepScore
@@ -223,11 +224,10 @@ func (r *Repository) pgKPIBoard(ctx context.Context) models.KPIBoard {
 		}
 	}
 	if len(board) == 0 {
-		return r.mem.kpiBoard()
+		return models.KPIBoard{Period: time.Now().Format("Jan 2006")}
 	}
 	return models.KPIBoard{
 		Period: time.Now().Format("Jan 2006"), Leaderboard: board,
-		Targets: r.mem.kpiBoard().Targets,
 	}
 }
 
@@ -236,7 +236,7 @@ func (r *Repository) pgAnalytics(ctx context.Context) models.AnalyticsSummary {
 		SELECT channel, COUNT(*)::int, COALESCE(SUM(qtd_value_ugx),0)::float8
 		FROM dms_outlets GROUP BY channel ORDER BY SUM(qtd_value_ugx) DESC`)
 	if err != nil {
-		return r.mem.analytics()
+		return models.AnalyticsSummary{}
 	}
 	defer rows.Close()
 	var cohorts []models.CohortRow
@@ -245,7 +245,6 @@ func (r *Repository) pgAnalytics(ctx context.Context) models.AnalyticsSummary {
 		var c models.CohortRow
 		if rows.Scan(&label, &c.Outlets, &c.Revenue) == nil {
 			c.Label = label
-			c.Retention = 78
 			cohorts = append(cohorts, c)
 		}
 	}
@@ -265,7 +264,7 @@ func (r *Repository) pgAnalytics(ctx context.Context) models.AnalyticsSummary {
 		)
 	}
 	if len(cohorts) == 0 {
-		return r.mem.analytics()
+		return models.AnalyticsSummary{Funnel: funnel}
 	}
 	return models.AnalyticsSummary{Cohorts: cohorts, Funnel: funnel}
 }
@@ -278,7 +277,7 @@ func (r *Repository) pgForecast(ctx context.Context, sku string) models.Forecast
 		SELECT point_date::text, forecast, actual, lower_bound, upper_bound
 		FROM dms_forecast_points WHERE sku = $1 ORDER BY point_date ASC`, sku)
 	if err != nil {
-		return r.mem.forecast(sku)
+		return models.Forecast{SKU: sku, HorizonDays: 28}
 	}
 	defer rows.Close()
 	var points []models.ForecastPoint
@@ -299,9 +298,9 @@ func (r *Repository) pgForecast(ctx context.Context, sku string) models.Forecast
 		}
 	}
 	if len(points) == 0 {
-		return r.mem.forecast(sku)
+		return models.Forecast{SKU: sku, HorizonDays: 28}
 	}
-	return models.Forecast{SKU: sku, MAPE: 6.4, HorizonDays: 28, Points: points}
+	return models.Forecast{SKU: sku, HorizonDays: 28, Points: points}
 }
 
 func (r *Repository) pgRoutesStats(ctx context.Context) map[string]any {
@@ -309,12 +308,12 @@ func (r *Repository) pgRoutesStats(ctx context.Context) map[string]any {
 	var dist float64
 	_ = r.pool.QueryRow(ctx, `SELECT COUNT(*)::int, COALESCE(SUM(stop_count),0)::int, COALESCE(AVG(distance_km),0)::float8 FROM dms_beats`).Scan(&beats, &stops, &dist)
 	if beats == 0 {
-		return r.mem.routesStats()
+		return map[string]any{"activeBeats": 0, "avgStops": 0, "avgDistanceKm": 0}
 	}
 	avgStops := float64(stops) / float64(beats)
 	return map[string]any{
 		"activeBeats": beats, "avgStops": math.Round(avgStops*10) / 10,
-		"onTimePct": 88, "strikeRatePct": 62, "linesPerOrder": 4.8, "avgDistanceKm": math.Round(dist*10) / 10,
+		"avgDistanceKm": math.Round(dist*10) / 10,
 	}
 }
 
@@ -331,9 +330,6 @@ func (r *Repository) pgOrdersStats(ctx context.Context) map[string]any {
 	var val float64
 	_ = r.pool.QueryRow(ctx, `SELECT COALESCE(SUM(amount_ugx),0) FROM dms_orders WHERE status IN ('draft','submitted','picking','delivery')`).Scan(&val)
 	stats["openValueUgx"] = val
-	if stats["open"] == nil && stats["openValueUgx"] == nil {
-		return r.mem.ordersStats()
-	}
 	return stats
 }
 
@@ -345,11 +341,10 @@ func (r *Repository) pgCheckInStats(ctx context.Context) map[string]any {
 		SELECT COUNT(*)::int FROM dms_check_ins
 		WHERE arrived_at >= CURRENT_DATE`).Scan(&visits)
 	if total == 0 {
-		return r.mem.checkInStats()
+		return map[string]any{"clockedIn": 0, "totalReps": 0, "visitsToday": 0}
 	}
 	return map[string]any{
 		"clockedIn": clocked, "totalReps": total, "visitsToday": visits,
-		"avgMinutes": 11.4, "gpsVerifiedPct": 98, "failedReports": 6,
 	}
 }
 
@@ -362,12 +357,12 @@ func (r *Repository) pgOutletStats(ctx context.Context) map[string]any {
 		       COALESCE(SUM(qtd_value_ugx),0)::float8
 		FROM dms_outlets`).Scan(&total, &active, &sumQtd)
 	if total == 0 {
-		return r.mem.outletStats()
+		return map[string]any{"universe": 0, "productivePct": 0, "avgDropUgx": 0}
 	}
 	prodPct := int(math.Round(float64(active) / float64(total) * 100))
 	avgDrop := int(sumQtd / float64(total))
 	return map[string]any{
-		"universe": total, "productivePct": prodPct, "avgProductivityPct": 62,
-		"avgDropUgx": avgDrop, "rangeSelling": 4.8, "mustStockPct": 71,
+		"universe": total, "productivePct": prodPct,
+		"avgDropUgx": avgDrop,
 	}
 }
