@@ -215,6 +215,16 @@ type PromotionInput struct {
 	ROI     float64 `json:"roi,omitempty"`
 }
 
+// PromotionPatch carries partial updates; nil pointers / empty strings are left
+// unchanged so callers can PATCH a single field.
+type PromotionPatch struct {
+	Name    string   `json:"name,omitempty"`
+	SKU     string   `json:"sku,omitempty"`
+	Status  string   `json:"status,omitempty"`
+	ROI     *float64 `json:"roi,omitempty"`
+	Outlets *int     `json:"outlets,omitempty"`
+}
+
 type Claim struct {
 	ID        string    `json:"id"`
 	OutletID  string    `json:"outletId"`
@@ -228,6 +238,12 @@ type ClaimInput struct {
 	OutletID  string  `json:"outletId"`
 	Type      string  `json:"type"`
 	AmountUGX float64 `json:"amountUgx"`
+}
+
+type ClaimPatch struct {
+	Type      string   `json:"type,omitempty"`
+	Status    string   `json:"status,omitempty"`
+	AmountUGX *float64 `json:"amountUgx,omitempty"`
 }
 
 type Dispatch struct {
@@ -245,6 +261,13 @@ type DispatchInput struct {
 	Driver   string   `json:"driver,omitempty"`
 	OrderIDs []string `json:"orderIds"`
 	ETA      string   `json:"eta,omitempty"`
+}
+
+type DispatchPatch struct {
+	TruckID string `json:"truckId,omitempty"`
+	Driver  string `json:"driver,omitempty"`
+	Status  string `json:"status,omitempty"`
+	ETA     string `json:"eta,omitempty"`
 }
 
 type SKU struct {
@@ -272,6 +295,9 @@ type Invoice struct {
 	DueDate       time.Time `json:"dueDate"`
 	Status        string    `json:"status"`
 	OrderID       string    `json:"orderId,omitempty"`
+	EFRISStatus   string    `json:"efrisStatus,omitempty"`
+	URAReceipt    string    `json:"uraReceipt,omitempty"`
+	DocumentURL   string    `json:"documentUrl,omitempty"`
 }
 
 type InvoiceInput struct {
@@ -281,12 +307,84 @@ type InvoiceInput struct {
 	DueDate       time.Time `json:"dueDate"`
 }
 
+type InvoicePatch struct {
+	AmountUGX *float64   `json:"amountUgx,omitempty"`
+	Status    string     `json:"status,omitempty"`
+	DueDate   *time.Time `json:"dueDate,omitempty"`
+}
+
 type PricingTemplate struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Channel  string `json:"channel"`
 	Version  string `json:"version"`
 	Currency string `json:"currency"`
+	Status   string `json:"status,omitempty"`
+}
+
+type PricingInput struct {
+	Name     string `json:"name"`
+	Channel  string `json:"channel"`
+	Currency string `json:"currency"`
+}
+
+type PricingPatch struct {
+	Name     string `json:"name,omitempty"`
+	Channel  string `json:"channel,omitempty"`
+	Currency string `json:"currency,omitempty"`
+	Status   string `json:"status,omitempty"`
+}
+
+type PricingVersion struct {
+	ID         string    `json:"id"`
+	TemplateID string    `json:"templateId"`
+	Version    string    `json:"version"`
+	CreatedBy  string    `json:"createdBy,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// JourneyAssignment binds a beat to a rep on a date with an ordered stop seq.
+type JourneyAssignment struct {
+	ID     string `json:"id"`
+	RepID  string `json:"repId"`
+	Date   string `json:"date"`
+	BeatID string `json:"beatId"`
+	Seq    int    `json:"seq"`
+	Status string `json:"status"`
+}
+
+type JourneyAssignmentInput struct {
+	RepID  string `json:"repId"`
+	Date   string `json:"date"`
+	BeatID string `json:"beatId"`
+	Seq    int    `json:"seq,omitempty"`
+}
+
+type JourneyAssignmentPatch struct {
+	BeatID string `json:"beatId,omitempty"`
+	Date   string `json:"date,omitempty"`
+	Status string `json:"status,omitempty"`
+	Seq    *int   `json:"seq,omitempty"`
+}
+
+type ReportSchedule struct {
+	ID         string     `json:"id"`
+	TemplateID string     `json:"templateId,omitempty"`
+	Name       string     `json:"name"`
+	Cron       string     `json:"cron,omitempty"`
+	Channel    string     `json:"channel"`
+	Recipient  string     `json:"recipient"`
+	Active     bool       `json:"active"`
+	LastRunAt  *time.Time `json:"lastRunAt,omitempty"`
+	NextRunAt  *time.Time `json:"nextRunAt,omitempty"`
+}
+
+type ReportScheduleInput struct {
+	TemplateID string `json:"templateId,omitempty"`
+	Name       string `json:"name"`
+	Cron       string `json:"cron,omitempty"`
+	Channel    string `json:"channel,omitempty"`
+	Recipient  string `json:"recipient"`
 }
 
 type ReportTemplate struct {
@@ -385,11 +483,27 @@ type FinanceSummary struct {
 }
 
 type ExecutionTask struct {
-	ID       string `json:"id"`
-	OutletID string `json:"outletId"`
-	Type     string `json:"type"`
-	Status   string `json:"status"`
-	Detail   string `json:"detail"`
+	ID       string   `json:"id"`
+	OutletID string   `json:"outletId"`
+	Type     string   `json:"type"`
+	Status   string   `json:"status"`
+	Detail   string   `json:"detail"`
+	Photos   []string `json:"photos,omitempty"`
+}
+
+// Attachment is a stored binary object's metadata; the bytes live in the
+// configured storage.Store under StorageKey.
+type Attachment struct {
+	ID          string    `json:"id"`
+	OwnerType   string    `json:"ownerType,omitempty"`
+	OwnerID     string    `json:"ownerId,omitempty"`
+	Filename    string    `json:"filename"`
+	ContentType string    `json:"contentType"`
+	Size        int64     `json:"size"`
+	StorageKey  string    `json:"-"`
+	URL         string    `json:"url"`
+	UploadedBy  string    `json:"uploadedBy,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type SearchResult struct {

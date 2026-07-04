@@ -35,6 +35,7 @@ type Config struct {
 	OperationsConsumerTopic   string
 	OperationsConsumerGroupID string
 	FinanceURL          string
+	FileStorageDir      string
 	ReadTimeout         time.Duration
 	WriteTimeout        time.Duration
 }
@@ -74,6 +75,7 @@ func Load() (Config, error) {
 		OperationsConsumerTopic:   envOr("OPERATIONS_CONSUMER_TOPIC", "iag.operations"),
 		OperationsConsumerGroupID: envOr("OPERATIONS_CONSUMER_GROUP_ID", "iag-dms.operations"),
 		FinanceURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("FINANCE_URL")), "/"),
+		FileStorageDir:      envOr("FILE_STORAGE_DIR", "./data/attachments"),
 		ReadTimeout:         30 * time.Second,
 		WriteTimeout:        30 * time.Second,
 	}

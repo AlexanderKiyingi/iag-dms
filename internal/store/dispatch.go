@@ -253,6 +253,87 @@ func (r *Repository) CreateDispatch(in models.DispatchInput) models.Dispatch {
 	return r.mem.createDispatch(in)
 }
 
+// ---- Deletes ---------------------------------------------------------------
+
+func (r *Repository) DeleteOutlet(id string) error {
+	if r.pool != nil {
+		return r.pgDeleteOutlet(r.bg(), id)
+	}
+	return r.mem.deleteOutlet(id)
+}
+
+func (r *Repository) DeleteOrder(id string) error {
+	if r.pool != nil {
+		return r.pgDeleteOrder(r.bg(), id)
+	}
+	return r.mem.deleteOrder(id)
+}
+
+func (r *Repository) DeleteCheckIn(id string) error {
+	if r.pool != nil {
+		return r.pgDeleteCheckIn(r.bg(), id)
+	}
+	return r.mem.deleteCheckIn(id)
+}
+
+func (r *Repository) DeletePromotion(id string) error {
+	if r.pool != nil {
+		return r.pgDeletePromotion(r.bg(), id)
+	}
+	return r.mem.deletePromotion(id)
+}
+
+func (r *Repository) DeleteClaim(id string) error {
+	if r.pool != nil {
+		return r.pgDeleteClaim(r.bg(), id)
+	}
+	return r.mem.deleteClaim(id)
+}
+
+func (r *Repository) DeleteDispatch(id string) error {
+	if r.pool != nil {
+		return r.pgDeleteDispatch(r.bg(), id)
+	}
+	return r.mem.deleteDispatch(id)
+}
+
+func (r *Repository) DeleteInvoice(id string) error {
+	if r.pool != nil {
+		return r.pgDeleteInvoice(r.bg(), id)
+	}
+	return r.mem.deleteInvoice(id)
+}
+
+// ---- Patches ---------------------------------------------------------------
+
+func (r *Repository) PatchPromotion(id string, patch models.PromotionPatch) (models.Promotion, error) {
+	if r.pool != nil {
+		return r.pgPatchPromotion(r.bg(), id, patch)
+	}
+	return r.mem.patchPromotion(id, patch)
+}
+
+func (r *Repository) PatchClaim(id string, patch models.ClaimPatch) (models.Claim, error) {
+	if r.pool != nil {
+		return r.pgPatchClaim(r.bg(), id, patch)
+	}
+	return r.mem.patchClaim(id, patch)
+}
+
+func (r *Repository) PatchDispatch(id string, patch models.DispatchPatch) (models.Dispatch, error) {
+	if r.pool != nil {
+		return r.pgPatchDispatch(r.bg(), id, patch)
+	}
+	return r.mem.patchDispatch(id, patch)
+}
+
+func (r *Repository) PatchInvoice(id string, patch models.InvoicePatch) (models.Invoice, error) {
+	if r.pool != nil {
+		return r.pgPatchInvoice(r.bg(), id, patch)
+	}
+	return r.mem.patchInvoice(id, patch)
+}
+
 func (r *Repository) RunReport(in models.ReportRunInput) models.ReportRun {
 	if r.pool != nil {
 		return r.pgRunReport(r.bg(), in)

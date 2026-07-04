@@ -28,6 +28,7 @@ import (
 	"github.com/iag/dms/backend/internal/outbox"
 	"github.com/iag/dms/backend/internal/platformauth"
 	"github.com/iag/dms/backend/internal/router"
+	"github.com/iag/dms/backend/internal/storage"
 	"github.com/iag/dms/backend/internal/seed"
 	"github.com/iag/dms/backend/internal/store"
 )
@@ -114,6 +115,11 @@ func main() {
 		slog.Info("outbox publisher started")
 	}
 
+	if pool != nil {
+		go runReportScheduler(ctx, repo, eventBus)
+		slog.Info("report scheduler started")
+	}
+
 	if cfg.ConsumerEnabled && len(cfg.KafkaBrokers) > 0 && pool != nil {
 		commercial := consumer.NewCommercial(consumer.Config{
 			Brokers: cfg.KafkaBrokers,
@@ -148,12 +154,20 @@ func main() {
 		ServiceSecret:   cfg.ServiceClientSecret,
 	})
 
+	var fileStore storage.Store
+	if disk, err := storage.NewDiskStore(cfg.FileStorageDir); err != nil {
+		slog.Warn("attachment storage unavailable — uploads disabled", "err", err)
+	} else {
+		fileStore = disk
+	}
+
 	engine := router.New(router.Options{
 		Cfg:          cfg,
 		Repo:         repo,
 		PlatformAuth: platformAuth,
 		Events:       eventBus,
 		Finance:      financeClient,
+		Storage:      fileStore,
 	})
 
 	srv := &http.Server{

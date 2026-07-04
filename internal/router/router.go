@@ -14,6 +14,7 @@ import (
 	"github.com/iag/dms/backend/internal/financeclient"
 	"github.com/iag/dms/backend/internal/handlers"
 	"github.com/iag/dms/backend/internal/middleware"
+	"github.com/iag/dms/backend/internal/storage"
 	"github.com/iag/dms/backend/internal/store"
 )
 
@@ -23,6 +24,7 @@ type Options struct {
 	PlatformAuth *middleware.PlatformAuth
 	Events       *events.Bus
 	Finance      *financeclient.Client
+	Storage      storage.Store
 }
 
 func New(opts Options) *gin.Engine {
@@ -34,7 +36,7 @@ func New(opts Options) *gin.Engine {
 	r.Use(securityHeaders())
 	r.Use(corsMiddleware(opts.Cfg.CORSOrigin))
 
-	api := &handlers.API{Repo: opts.Repo, Cfg: opts.Cfg, Events: opts.Events, Finance: opts.Finance}
+	api := &handlers.API{Repo: opts.Repo, Cfg: opts.Cfg, Events: opts.Events, Finance: opts.Finance, Storage: opts.Storage}
 
 	// Root service descriptor. The embedded static UI was removed — DMS is a
 	// headless API; the browser UI lives in the separate dmsiag repo and talks
@@ -79,6 +81,7 @@ func registerPlatformRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.GET("/lookups/:kind", auth.RequirePerm("dms.view_overview"), api.Lookups)
 	v1.GET("/search", auth.RequirePerm("dms.view_overview"), api.Search)
 	v1.GET("/notifications", auth.RequirePerm("dms.view_overview"), api.Notifications)
+	v1.POST("/messages", auth.RequirePerm("dms.view_overview"), api.SendMessage)
 	v1.GET("/platform/status", auth.RequireStaff(), api.PlatformStatus)
 }
 
@@ -93,6 +96,7 @@ func registerDomainRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.POST("/outlets", auth.RequirePerm("dms.manage_outlets"), api.CreateOutlet)
 	v1.GET("/outlets/:id", auth.RequirePerm("dms.view_outlets"), api.GetOutlet)
 	v1.PATCH("/outlets/:id", auth.RequirePerm("dms.manage_outlets"), api.PatchOutlet)
+	v1.DELETE("/outlets/:id", auth.RequirePerm("dms.manage_outlets"), api.DeleteOutlet)
 
 	v1.GET("/orders/stats", auth.RequirePerm("dms.view_orders"), func(c *gin.Context) {
 		c.JSON(http.StatusOK, api.Repo.OrdersStats())
@@ -102,6 +106,7 @@ func registerDomainRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.POST("/orders", auth.RequirePerm("dms.manage_orders"), api.CreateOrder)
 	v1.GET("/orders/:id", auth.RequirePerm("dms.view_orders"), api.GetOrder)
 	v1.PATCH("/orders/:id/status", auth.RequirePerm("dms.manage_orders"), api.PatchOrderStatus)
+	v1.DELETE("/orders/:id", auth.RequirePerm("dms.manage_orders"), api.DeleteOrder)
 
 	v1.GET("/routes/stats", auth.RequirePerm("dms.view_overview"), api.RoutesStats)
 	v1.GET("/beats", auth.RequirePerm("dms.view_overview"), api.ListBeats)
@@ -112,17 +117,30 @@ func registerDomainRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.GET("/field/check-ins", auth.RequirePerm("dms.field_checkin"), api.ListCheckIns)
 	v1.POST("/field/check-ins", auth.RequirePerm("dms.field_checkin"), api.CreateCheckIn)
 	v1.PATCH("/field/check-ins/:id", auth.RequirePerm("dms.field_checkin"), api.CompleteCheckIn)
+	v1.DELETE("/field/check-ins/:id", auth.RequirePerm("dms.field_checkin"), api.DeleteCheckIn)
 	v1.GET("/field/visit-reports", auth.RequirePerm("dms.field_checkin"), api.ListVisitReports)
 	v1.POST("/field/visit-reports", auth.RequirePerm("dms.field_checkin"), api.CreateVisitReport)
 	v1.GET("/field/journey", auth.RequirePerm("dms.field_checkin"), api.Journey)
+	v1.GET("/field/journey/assignments", auth.RequirePerm("dms.field_checkin"), api.ListJourneyAssignments)
+	v1.POST("/field/journey/assign", auth.RequirePerm("dms.field_checkin"), api.CreateJourneyAssignment)
+	v1.PATCH("/field/journey/assign/:id", auth.RequirePerm("dms.field_checkin"), api.PatchJourneyAssignment)
+	v1.DELETE("/field/journey/assign/:id", auth.RequirePerm("dms.field_checkin"), api.DeleteJourneyAssignment)
 	v1.GET("/field/execution", auth.RequirePerm("dms.field_checkin"), api.ListExecution)
+	v1.POST("/field/execution/:id/photos", auth.RequirePerm("dms.field_checkin"), api.UploadExecutionPhoto)
+	v1.GET("/field/execution/:id/photos", auth.RequirePerm("dms.field_checkin"), api.ListExecutionPhotos)
 
 	v1.GET("/promotions", auth.RequirePerm("dms.view_overview"), api.ListPromotions)
 	v1.POST("/promotions", auth.RequirePerm("dms.manage_promotions"), api.CreatePromotion)
+	v1.PATCH("/promotions/:id", auth.RequirePerm("dms.manage_promotions"), api.PatchPromotion)
+	v1.DELETE("/promotions/:id", auth.RequirePerm("dms.manage_promotions"), api.DeletePromotion)
 	v1.GET("/claims", auth.RequirePerm("dms.view_overview"), api.ListClaims)
 	v1.POST("/claims", auth.RequirePerm("dms.manage_claims"), api.CreateClaim)
+	v1.PATCH("/claims/:id", auth.RequirePerm("dms.manage_claims"), api.PatchClaim)
+	v1.DELETE("/claims/:id", auth.RequirePerm("dms.manage_claims"), api.DeleteClaim)
 	v1.GET("/dispatch", auth.RequirePerm("dms.view_orders"), api.ListDispatches)
 	v1.POST("/dispatch", auth.RequirePerm("dms.manage_dispatch"), api.CreateDispatch)
+	v1.PATCH("/dispatch/:id", auth.RequirePerm("dms.manage_dispatch"), api.PatchDispatch)
+	v1.DELETE("/dispatch/:id", auth.RequirePerm("dms.manage_dispatch"), api.DeleteDispatch)
 
 	v1.GET("/stock/distributor", auth.RequirePerm("dms.view_overview"), api.ListStock)
 	v1.GET("/stock/skus", auth.RequirePerm("dms.view_overview"), api.ListSKUs)
@@ -131,11 +149,27 @@ func registerDomainRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.GET("/invoices", auth.RequirePerm("dms.view_finance"), api.ListInvoices)
 	v1.GET("/invoices/:id", auth.RequirePerm("dms.view_finance"), api.GetInvoice)
 	v1.POST("/invoices", auth.RequirePerm("dms.manage_invoices"), api.CreateInvoice)
+	v1.PATCH("/invoices/:id", auth.RequirePerm("dms.manage_invoices"), api.PatchInvoice)
+	v1.DELETE("/invoices/:id", auth.RequirePerm("dms.manage_invoices"), api.DeleteInvoice)
+	v1.POST("/invoices/:id/efris", auth.RequirePerm("dms.manage_invoices"), api.SubmitInvoiceEFRIS)
+	v1.GET("/invoices/:id/document", auth.RequirePerm("dms.view_finance"), api.GetInvoiceDocument)
+	v1.POST("/invoices/:id/send", auth.RequirePerm("dms.manage_invoices"), api.SendInvoice)
 
 	v1.GET("/pricing/templates", auth.RequirePerm("dms.view_finance"), api.ListPricing)
+	v1.POST("/pricing/templates", auth.RequirePerm("dms.manage_pricing"), api.CreatePricing)
+	v1.PATCH("/pricing/templates/:id", auth.RequirePerm("dms.manage_pricing"), api.PatchPricing)
+	v1.POST("/pricing/templates/:id/approve", auth.RequirePerm("dms.manage_pricing"), api.ApprovePricing)
+	v1.GET("/pricing/templates/:id/versions", auth.RequirePerm("dms.view_finance"), api.ListPricingVersions)
 	v1.GET("/reports/templates", auth.RequirePerm("dms.run_reports"), api.ListReports)
 	v1.POST("/reports/run", auth.RequirePerm("dms.run_reports"), api.RunReport)
+	v1.GET("/reports/scheduled", auth.RequirePerm("dms.run_reports"), api.ListReportSchedules)
+	v1.POST("/reports/schedule", auth.RequirePerm("dms.run_reports"), api.CreateReportSchedule)
+	v1.DELETE("/reports/schedule/:id", auth.RequirePerm("dms.run_reports"), api.DeleteReportSchedule)
 	v1.POST("/exports/:page", auth.RequirePerm("dms.run_reports"), api.ExportPage)
+
+	v1.POST("/attachments", auth.RequirePerm("dms.view_overview"), api.UploadAttachment)
+	v1.GET("/attachments", auth.RequirePerm("dms.view_overview"), api.ListAttachments)
+	v1.GET("/attachments/:id/download", auth.RequirePerm("dms.view_overview"), api.DownloadAttachment)
 
 	v1.GET("/kpi/board", auth.RequirePerm("dms.insights.read"), api.KPIBoard)
 	v1.GET("/analytics/summary", auth.RequirePerm("dms.insights.read"), api.Analytics)

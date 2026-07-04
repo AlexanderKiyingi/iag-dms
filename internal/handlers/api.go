@@ -9,6 +9,7 @@ import (
 	"github.com/iag/dms/backend/internal/config"
 	"github.com/iag/dms/backend/internal/events"
 	"github.com/iag/dms/backend/internal/financeclient"
+	"github.com/iag/dms/backend/internal/storage"
 	"github.com/iag/dms/backend/internal/store"
 )
 
@@ -17,6 +18,7 @@ type API struct {
 	Cfg     config.Config
 	Events  *events.Bus
 	Finance *financeclient.Client
+	Storage storage.Store
 }
 
 func (h *API) Health(c *gin.Context) {

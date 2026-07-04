@@ -466,7 +466,7 @@ func (r *Repository) pgCreateInvoice(ctx context.Context, in models.InvoiceInput
 }
 
 func (r *Repository) pgListPricing(ctx context.Context) []models.PricingTemplate {
-	rows, _ := r.pool.Query(ctx, `SELECT id, name, channel, version, currency FROM dms_pricing_templates ORDER BY id`)
+	rows, _ := r.pool.Query(ctx, `SELECT id, name, channel, version, currency, COALESCE(status,'approved') FROM dms_pricing_templates ORDER BY id`)
 	defer func() {
 		if rows != nil {
 			rows.Close()
@@ -476,7 +476,7 @@ func (r *Repository) pgListPricing(ctx context.Context) []models.PricingTemplate
 	if rows != nil {
 		for rows.Next() {
 			var p models.PricingTemplate
-			if rows.Scan(&p.ID, &p.Name, &p.Channel, &p.Version, &p.Currency) == nil {
+			if rows.Scan(&p.ID, &p.Name, &p.Channel, &p.Version, &p.Currency, &p.Status) == nil {
 				out = append(out, p)
 			}
 		}
