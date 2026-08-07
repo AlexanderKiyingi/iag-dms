@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -50,6 +51,15 @@ func New(cfg Config) *Client {
 		sa:         sa,
 	}
 }
+
+// ErrDocumentExists means finance already holds this document_ref (HTTP 409).
+// Because document_ref is unique per tenant, this is the idempotent "already
+// booked" outcome — callers should treat it as success.
+//
+// Mirrors ErrAPItemExists / ErrARItemExists in the project-management and CRM
+// clients: every synchronous caller into the ledger needs the retry semantics
+// the event consumers get for free from idempotency on event id.
+var ErrDocumentExists = errors.New("finance document already exists for documentRef")
 
 func (c *Client) Enabled() bool { return c != nil && c.baseURL != "" }
 
@@ -165,6 +175,19 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, dest 
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusConflict {
+		// Finance holds a unique index on (tenant_id, document_ref), so a repeat
+		// of the same invoice is refused rather than double-booked. For a caller
+		// that is the idempotent success: the document exists. Surfacing it as a
+		// generic error would have a retry treat a completed booking as failed.
+		//
+		// Decoded into dest where finance returned a body, so the caller still
+		// gets the existing document rather than a zero value.
+		if dest != nil && len(respBody) > 0 {
+			_ = json.Unmarshal(respBody, dest)
+		}
+		return ErrDocumentExists
+	}
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("finance %s: %s", resp.Status, strings.TrimSpace(string(respBody)))
 	}

@@ -9,11 +9,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/alvor-technologies/iag-platform-go/apierr"
 	"github.com/iag/dms/backend/internal/events"
 	"github.com/iag/dms/backend/internal/financeclient"
 	"github.com/iag/dms/backend/internal/models"
 	"github.com/iag/dms/backend/internal/store"
-	"github.com/alvor-technologies/iag-platform-go/apierr"
 )
 
 func (h *API) ListDistributors(c *gin.Context) {
@@ -220,7 +220,7 @@ func (h *API) ListInvoices(c *gin.Context) {
 			out := make([]models.Invoice, 0, len(items))
 			for _, it := range items {
 				due, _ := time.Parse("2006-01-02", it.Due)
-			out = append(out, models.Invoice{
+				out = append(out, models.Invoice{
 					ID:            it.No,
 					DistributorID: it.Customer,
 					Distributor:   it.Customer,
@@ -259,8 +259,14 @@ func (h *API) CreateInvoice(c *gin.Context) {
 		if !in.DueDate.IsZero() {
 			req.Due = in.DueDate.Format("2006-01-02")
 		}
-		if created, err := h.Finance.CreateInvoice(c.Request.Context(), req); err == nil {
-			inv.ID = created.No
+		// A conflict means finance already holds this document — the outcome a
+		// retry wants — so it is adopted like a fresh create rather than logged
+		// as a failure that leaves the local invoice unlinked.
+		created, err := h.Finance.CreateInvoice(c.Request.Context(), req)
+		if err == nil || errors.Is(err, financeclient.ErrDocumentExists) {
+			if created.No != "" {
+				inv.ID = created.No
+			}
 			if created.Status != "" {
 				inv.Status = created.Status
 			}
