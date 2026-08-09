@@ -18,6 +18,7 @@ type Config struct {
 }
 
 type envelope struct {
+	ID     string          `json:"id"`
 	Type   string          `json:"type"`
 	Source string          `json:"source"`
 	Data   json.RawMessage `json:"data"`
@@ -80,7 +81,7 @@ func (c *Commercial) handle(ctx context.Context, raw []byte) error {
 	switch env.Type {
 	case "crm.lead.converted", "crm.outlet.synced", "crm.deal.won":
 		if c.repo != nil {
-			if err := c.repo.ApplyCommercialEvent(ctx, env.Type, env.Data); err != nil {
+			if err := c.repo.ApplyCommercialEvent(ctx, env.ID, env.Type, env.Data); err != nil {
 				return err
 			}
 			_, _ = c.repo.AppendAudit(ctx, "InboundEvent", env.Type, "kafka-consumer")

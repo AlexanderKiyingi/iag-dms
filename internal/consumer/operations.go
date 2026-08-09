@@ -18,6 +18,7 @@ type OperationsConfig struct {
 }
 
 type envelopeOps struct {
+	ID     string          `json:"id"`
 	Type   string          `json:"type"`
 	Source string          `json:"source"`
 	Data   json.RawMessage `json:"data"`
@@ -80,7 +81,7 @@ func (c *Operations) handle(ctx context.Context, raw []byte) error {
 	switch env.Type {
 	case "warehouse.pick.confirmed":
 		if c.repo != nil {
-			if err := c.repo.ApplyOperationsEvent(ctx, env.Type, env.Data); err != nil {
+			if err := c.repo.ApplyOperationsEvent(ctx, env.ID, env.Type, env.Data); err != nil {
 				return err
 			}
 			_, _ = c.repo.AppendAudit(ctx, "InboundEvent", env.Type, "kafka-operations-consumer")

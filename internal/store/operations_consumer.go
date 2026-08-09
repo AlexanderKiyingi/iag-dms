@@ -7,7 +7,7 @@ import (
 )
 
 // ApplyOperationsEvent updates DMS state from iag.operations envelopes.
-func (r *Repository) ApplyOperationsEvent(ctx context.Context, eventType string, raw json.RawMessage) error {
+func (r *Repository) ApplyOperationsEvent(ctx context.Context, eventID, eventType string, raw json.RawMessage) error {
 	if r.pool == nil {
 		return nil
 	}
@@ -17,13 +17,13 @@ func (r *Repository) ApplyOperationsEvent(ctx context.Context, eventType string,
 	}
 	switch eventType {
 	case "warehouse.pick.confirmed":
-		return r.applyWarehousePickConfirmed(ctx, data)
+		return r.applyWarehousePickConfirmed(ctx, eventID, data)
 	default:
 		return nil
 	}
 }
 
-func (r *Repository) applyWarehousePickConfirmed(ctx context.Context, data map[string]any) error {
+func (r *Repository) applyWarehousePickConfirmed(ctx context.Context, eventID string, data map[string]any) error {
 	orderRef := stringField(data, "order_ref", "orderRef", "order_id", "orderId")
 	if orderRef == "" {
 		return nil
@@ -38,5 +38,5 @@ func (r *Repository) applyWarehousePickConfirmed(ctx context.Context, data map[s
 		return nil
 	}
 	detail := fmt.Sprintf("Warehouse pick confirmed for order %s — ready for dispatch", orderRef)
-	return r.insertCommercialSignal(ctx, "warehouse", orderRef, orderRef, "pick.confirmed", "medium", detail)
+	return r.insertCommercialSignal(ctx, eventID, "warehouse", orderRef, orderRef, "pick.confirmed", "medium", detail)
 }
