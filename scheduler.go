@@ -13,8 +13,11 @@ import (
 
 // runReportScheduler periodically runs due report schedules and delivers each
 // via the notifications service (email/SMS/WhatsApp per the schedule's channel).
-// DueReportSchedules advances each fired schedule's next_run_at, so a report is
-// delivered at most once per window.
+//
+// DueReportSchedules claims and advances each schedule in a single atomic
+// statement, so a schedule is handed to exactly one caller even when several
+// replicas of this service tick at the same moment. That is what keeps a
+// recipient from being sent the same report once per running instance.
 func runReportScheduler(ctx context.Context, repo *store.Repository, bus *events.Bus) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()

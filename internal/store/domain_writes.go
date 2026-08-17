@@ -386,10 +386,24 @@ func (r *Repository) DueReportSchedules() []models.ReportSchedule {
 		return nil
 	}
 	ctx := r.bg()
+	// Claim and return in one statement. Selecting the due rows and advancing
+	// them in a second query leaves a window where another replica of this
+	// service runs the same SELECT and gets the same rows, and every schedule
+	// caught in that window is delivered twice — a duplicate report emailed or
+	// WhatsApp'd to a real recipient.
+	//
+	// FOR UPDATE SKIP LOCKED locks each candidate row for this transaction and
+	// steps over rows another instance already holds, so a schedule is returned
+	// to exactly one caller. RETURNING hands back only what this caller claimed.
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, template_id, name, cron, channel, recipient, active
-		FROM dms_report_schedules
-		WHERE active AND next_run_at <= NOW()`)
+		UPDATE dms_report_schedules
+		SET last_run_at = NOW(), next_run_at = NOW() + INTERVAL '1 day'
+		WHERE id IN (
+			SELECT id FROM dms_report_schedules
+			WHERE active AND next_run_at <= NOW()
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, template_id, name, cron, channel, recipient, active`)
 	if err != nil {
 		return nil
 	}
@@ -400,9 +414,6 @@ func (r *Repository) DueReportSchedules() []models.ReportSchedule {
 		if rows.Scan(&s.ID, &s.TemplateID, &s.Name, &s.Cron, &s.Channel, &s.Recipient, &s.Active) == nil {
 			due = append(due, s)
 		}
-	}
-	for _, s := range due {
-		_, _ = r.pool.Exec(ctx, `UPDATE dms_report_schedules SET last_run_at=NOW(), next_run_at=NOW()+INTERVAL '1 day' WHERE id=$1`, s.ID)
 	}
 	return due
 }
