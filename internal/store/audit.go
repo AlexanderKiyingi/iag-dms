@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -262,10 +263,23 @@ func (r *Repository) pgListAudit(ctx context.Context, limit int) ([]models.Audit
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	var total int
-	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*)::int FROM dms_audit_entries`).Scan(&total); err != nil {
-		return nil, 0, err
+	// The page itself is indexed (dms_audit_entries_logged_at_idx) and cheap.
+	// This exact COUNT is not: it scans the whole audit table, which only ever
+	// grows. Left unbounded it can outlast the gateway's proxy timeout, and the
+	// caller then sees UPSTREAM_ERROR 503 with no way to tell a slow query from
+	// a dead service — observed in production, where /v1/audit 503'd
+	// consistently while every sibling route answered 200.
+	//
+	// Bound it so the count can fail without taking the endpoint with it: the
+	// page is still worth returning, and a total of -1 tells the caller the
+	// figure is unavailable rather than zero.
+	total := -1
+	countCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	if err := r.pool.QueryRow(countCtx, `SELECT COUNT(*)::int FROM dms_audit_entries`).Scan(&total); err != nil {
+		total = -1
+		log.Printf("dms: audit count failed, returning page without a total: %v", err)
 	}
+	cancel()
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, logged_at, user_name, action, detail FROM dms_audit_entries ORDER BY logged_at DESC LIMIT $1`, limit)
 	if err != nil {
