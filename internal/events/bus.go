@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
@@ -163,7 +164,11 @@ func (b *Bus) writeEnvelope(ctx context.Context, env Envelope, key string) error
 // notifications policy consumer, using the shared
 // {channel,recipient,templateId,variables} envelope.
 func (b *Bus) PublishAlert(ctx context.Context, channel, recipient, templateID string, variables map[string]string, key string) {
-	if b == nil || !b.Enabled() || recipient == "" || templateID == "" {
+	if b == nil || !b.Enabled() || templateID == "" {
+		return
+	}
+	if recipient == "" {
+		warnNoNotifyRecipient()
 		return
 	}
 	vars := map[string]any{}
@@ -200,4 +205,16 @@ func eventKeyFromData(data any, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+var notifyRecipientWarnOnce sync.Once
+
+// warnNoNotifyRecipient logs once when an alert is dropped for want of a
+// recipient. Without it an unset NOTIFY_DEFAULT_RECIPIENT is indistinguishable
+// from "no alerts were raised": the emitter returns early, nothing reaches the
+// notifications service, and no error appears anywhere.
+func warnNoNotifyRecipient() {
+	notifyRecipientWarnOnce.Do(func() {
+		slog.Warn("dms alert dropped: no recipient and NOTIFY_DEFAULT_RECIPIENT is unset; dms.alert.raised events will not be emitted")
+	})
 }

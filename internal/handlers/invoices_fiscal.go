@@ -84,7 +84,11 @@ func (h *API) SendInvoice(c *gin.Context) {
 	}
 	docURL := h.Cfg.PublicAPIURL + h.Cfg.GatewayAPIPrefix + "/v1/invoices/" + id + "/document"
 	if h.Events != nil && h.Events.Enabled() {
-		h.Events.PublishAlert(c.Request.Context(), "email", recipient, "invoice-ready", map[string]string{
+		// "invoice-ready-email" is the seeded template name; the file key in the
+		// notifications repo is "invoice-ready" but it is stored under the
+		// -email suffix (see templates/email/embed.go seedNames). Passing the
+		// file key resolves to nothing and the dispatch fails template-not-found.
+		h.Events.PublishAlert(c.Request.Context(), "email", recipient, "invoice-ready-email", map[string]string{
 			"Name":          inv.Distributor,
 			"InvoiceNumber": inv.ID,
 			"Amount":        fmt.Sprintf("UGX %.0f", inv.AmountUGX),
