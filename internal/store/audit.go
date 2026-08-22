@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	platformdb "github.com/alvor-technologies/iag-platform-go/db"
+
 	"github.com/iag/dms/backend/internal/models"
 )
 
@@ -273,11 +275,20 @@ func (r *Repository) pgListAudit(ctx context.Context, limit int) ([]models.Audit
 	// Bound it so the count can fail without taking the endpoint with it: the
 	// page is still worth returning, and a total of -1 tells the caller the
 	// figure is unavailable rather than zero.
+	// The count is bounded now, which is the real fix for what the timeout
+	// below was papering over: an unqualified COUNT(*) on an append-only table
+	// is a full scan whose cost grows every month, and it was that scan — not a
+	// dead service — timing out. The timeout stays as a second line of defence,
+	// with the same -1 sentinel, because a bounded scan is cheap rather than
+	// free and this endpoint is worth returning without a total.
 	total := -1
 	countCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	if err := r.pool.QueryRow(countCtx, `SELECT COUNT(*)::int FROM dms_audit_entries`).Scan(&total); err != nil {
+	if n, _, err := platformdb.CountBounded(countCtx, r.pool, platformdb.DefaultCountCap,
+		"FROM dms_audit_entries"); err != nil {
 		total = -1
 		log.Printf("dms: audit count failed, returning page without a total: %v", err)
+	} else {
+		total = n
 	}
 	cancel()
 	rows, err := r.pool.Query(ctx, `
@@ -318,8 +329,10 @@ func (r *Repository) pgListAPIAuditLogs(ctx context.Context, limit int) ([]map[s
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	var total int
-	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*)::int FROM dms_api_audit`).Scan(&total); err != nil {
+	// Bounded: dms_api_audit takes a row per API request.
+	total, _, err := platformdb.CountBounded(ctx, r.pool, platformdb.DefaultCountCap,
+		"FROM dms_api_audit")
+	if err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.pool.Query(ctx, `
