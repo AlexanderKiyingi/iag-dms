@@ -164,10 +164,18 @@ func (b *Bus) writeEnvelope(ctx context.Context, env Envelope, key string) error
 // notifications policy consumer, using the shared
 // {channel,recipient,templateId,variables} envelope.
 func (b *Bus) PublishAlert(ctx context.Context, channel, recipient, templateID string, variables map[string]string, key string) {
+	b.PublishAlertTo(ctx, channel, "", recipient, templateID, variables, key)
+}
+
+// PublishAlertTo addresses a logical audience ("approvals.dms") whose
+// recipients an administrator maintains centrally, falling back to recipient
+// until that audience is routed. Prefer it wherever the destination is a desk
+// rather than a specific person.
+func (b *Bus) PublishAlertTo(ctx context.Context, channel, audience, recipient, templateID string, variables map[string]string, key string) {
 	if b == nil || !b.Enabled() || templateID == "" {
 		return
 	}
-	if recipient == "" {
+	if recipient == "" && audience == "" {
 		warnNoNotifyRecipient()
 		return
 	}
@@ -178,12 +186,16 @@ func (b *Bus) PublishAlert(ctx context.Context, channel, recipient, templateID s
 	if channel == "" {
 		channel = defaultNotifyChannel()
 	}
-	_ = b.Publish(ctx, TypeAlertRaised, map[string]any{
+	data := map[string]any{
 		"channel":    channel,
 		"recipient":  recipient,
 		"templateId": templateID,
 		"variables":  vars,
-	})
+	}
+	if audience != "" {
+		data["audience"] = audience
+	}
+	_ = b.Publish(ctx, TypeAlertRaised, data)
 }
 
 func defaultNotifyChannel() string {

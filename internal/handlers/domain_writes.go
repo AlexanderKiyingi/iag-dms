@@ -95,16 +95,17 @@ func (h *API) ApprovePricing(c *gin.Context) {
 	}
 	h.publish(c, "dms.pricing.approved", gin.H{"id": p.ID, "version": p.Version})
 	// A pricing template carries no requester address, so the decision goes to
-	// the ops desk. Approving one changes what every distributor is charged,
-	// which is worth a record outside the audit log.
+	// the "approvals.dms" audience — whoever an administrator has put on that
+	// desk, with NOTIFY_DEFAULT_RECIPIENT as the fallback until it is routed.
+	// Approving one changes what every distributor is charged, which is worth a
+	// record outside the audit log.
 	if h.Events != nil && h.Events.Enabled() {
-		if desk := events.DefaultNotifyRecipient(); desk != "" {
-			h.Events.PublishAlert(c.Request.Context(), "", desk, "approval.decision", map[string]string{
+		h.Events.PublishAlertTo(c.Request.Context(), "", "approvals.dms",
+			events.DefaultNotifyRecipient(), "approval.decision", map[string]string{
 				"Title": "Pricing approved: " + p.Name,
 				"Body": "Pricing template " + p.Name + " (version " +
 					p.Version + ") was approved by " + auth.ActorName(c) + ".",
 			}, p.ID)
-		}
 	}
 	h.recordAudit(c, "ApprovePricing", store.AuditDetail("pricing", p.ID, "approved"))
 	c.JSON(http.StatusOK, p)
