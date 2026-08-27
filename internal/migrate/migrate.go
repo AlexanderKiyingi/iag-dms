@@ -63,7 +63,14 @@ func Up(ctx context.Context, pool *pgxpool.Pool, fsys fs.FS) ([]string, error) {
 			newlyApplied = append(newlyApplied, m.Version)
 			slog.Info("migration applied", "version", m.Version)
 		case prev.Checksum != m.Checksum:
-			return newlyApplied, fmt.Errorf("migration %s checksum mismatch", m.Version)
+			if !supersededChecksums[m.Version][prev.Checksum] {
+				return newlyApplied, fmt.Errorf("migration %s checksum mismatch", m.Version)
+			}
+			if err := restamp(ctx, pool, m); err != nil {
+				return newlyApplied, fmt.Errorf("restamp %s: %w", m.Version, err)
+			}
+			slog.Warn("migration file was corrected in place; ledger re-stamped",
+				"version", m.Version, "was", prev.Checksum, "now", m.Checksum)
 		}
 	}
 	return newlyApplied, nil
@@ -87,6 +94,28 @@ func seedFromLegacyLedger(ctx context.Context, pool *pgxpool.Pool, migs []Migrat
 	if !hasLegacy {
 		return nil
 	}
+	// public.schema_migrations is a SHARED ledger: every service that predates the
+	// per-service cutover wrote its versions into it, unscoped. So a version string
+	// found there does not necessarily belong to THIS service - '0001_initial' is
+	// written by several of them. Seeding on a bare name match would stamp a
+	// migration as applied that never ran here, and the tables it creates would
+	// silently never exist.
+	//
+	// The cutover this function exists for only makes sense on a database that has
+	// actually run DMS before, and such a database necessarily has DMS tables. A
+	// database with none is either brand new or has never hosted DMS, and its rows
+	// in the shared ledger belong to somebody else. Refuse to read them.
+	var hasOwnTables bool
+	if err := pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.tables
+			WHERE table_schema = 'dms' AND table_name <> 'schema_migrations'
+		)`).Scan(&hasOwnTables); err != nil {
+		return err
+	}
+	if !hasOwnTables {
+		return nil
+	}
 	for _, m := range migs {
 		if _, err := pool.Exec(ctx, `
 			INSERT INTO dms.schema_migrations (version, checksum)
@@ -97,6 +126,34 @@ func seedFromLegacyLedger(ctx context.Context, pool *pgxpool.Pool, migs []Migrat
 		}
 	}
 	return nil
+}
+
+// supersededChecksums records migrations whose file was corrected in place after
+// it had already been applied somewhere. The checksum guard above exists to catch
+// a file being edited under a database that has already run it, which is almost
+// always a mistake — so an entry here is deliberate, names the exact prior
+// checksum, and heals only that one value. Any other drift still fails.
+//
+//	0002_forecast_points seeded demo forecast points against SKU BG-AA-250 with a
+//	plain INSERT. Nothing creates that SKU — the catalogue is written by
+//	application seed code, which runs after migrations — so the foreign key failed
+//	and DMS could not migrate from scratch at all. The INSERT now selects through
+//	an EXISTS check: unchanged wherever the SKU is present, a no-op where it is
+//	not. Databases that already applied the original file keep their rows and are
+//	simply re-stamped.
+var supersededChecksums = map[string]map[string]bool{
+	"0002_forecast_points": {
+		"c23c47ebca091f5a31a8cb3c88a31625e5d1a5a4c789095f1d2935ea7fb79aee": true,
+	},
+}
+
+// restamp records the current file checksum for a version that is already
+// applied. It never re-runs the migration body.
+func restamp(ctx context.Context, pool *pgxpool.Pool, m Migration) error {
+	_, err := pool.Exec(ctx,
+		`UPDATE dms.schema_migrations SET checksum = $2 WHERE version = $1`,
+		m.Version, m.Checksum)
+	return err
 }
 
 func load(fsys fs.FS) ([]Migration, error) {
