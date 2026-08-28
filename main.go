@@ -19,17 +19,17 @@ import (
 	dmsdb "github.com/iag/dms/backend/db"
 	"github.com/iag/dms/backend/internal/config"
 	"github.com/iag/dms/backend/internal/consumer"
-	"github.com/iag/dms/backend/internal/financeclient"
 	"github.com/iag/dms/backend/internal/db"
 	"github.com/iag/dms/backend/internal/events"
-	"github.com/iag/dms/backend/internal/migrate"
+	"github.com/iag/dms/backend/internal/financeclient"
 	"github.com/iag/dms/backend/internal/middleware"
+	"github.com/iag/dms/backend/internal/migrate"
 	"github.com/iag/dms/backend/internal/models"
 	"github.com/iag/dms/backend/internal/outbox"
 	"github.com/iag/dms/backend/internal/platformauth"
 	"github.com/iag/dms/backend/internal/router"
-	"github.com/iag/dms/backend/internal/storage"
 	"github.com/iag/dms/backend/internal/seed"
+	"github.com/iag/dms/backend/internal/storage"
 	"github.com/iag/dms/backend/internal/store"
 )
 
@@ -154,11 +154,28 @@ func main() {
 		ServiceSecret:   cfg.ServiceClientSecret,
 	})
 
+	// Object storage first, local disk as the fallback. FILE_STORAGE_DIR is a
+	// directory inside the container, so on Railway without a mounted volume it
+	// is ephemeral: uploads survive until the next redeploy and then vanish
+	// silently. When S3_* is configured the bucket is used instead and the
+	// attachment outlives the container.
 	var fileStore storage.Store
-	if disk, err := storage.NewDiskStore(cfg.FileStorageDir); err != nil {
+	if s3 := storage.NewS3Store(cfg.S3Endpoint, cfg.S3Region, cfg.S3Bucket,
+		cfg.S3AccessKeyID, cfg.S3SecretAccessKey, cfg.S3UseSSL); s3 != nil {
+		fileStore = s3
+		slog.Info("attachment storage: s3", "bucket", cfg.S3Bucket, "endpoint", cfg.S3Endpoint)
+	} else if disk, err := storage.NewDiskStore(cfg.FileStorageDir); err != nil {
 		slog.Warn("attachment storage unavailable — uploads disabled", "err", err)
 	} else {
 		fileStore = disk
+		// Say this loudly in production: it is a working configuration that
+		// quietly loses files, which is worse than one that fails outright.
+		if cfg.IsProduction() {
+			slog.Warn("attachment storage: local disk in production — uploads are LOST on redeploy unless a volume is mounted; set S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY",
+				"dir", cfg.FileStorageDir)
+		} else {
+			slog.Info("attachment storage: local disk", "dir", cfg.FileStorageDir)
+		}
 	}
 
 	engine := router.New(router.Options{

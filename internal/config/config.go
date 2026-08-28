@@ -11,34 +11,43 @@ import (
 )
 
 type Config struct {
-	ServiceName         string
-	Addr                string
-	Environment         string
-	DatabaseURL         string
-	UseMemoryStore      bool
-	JWTIssuer           string
-	JWKSURL             string
-	Audience            string // aud claim the service requires on inbound tokens
-	GatewayAPIPrefix    string
-	ServiceClientID     string
-	ServiceClientSecret string
-	AuthTokenURL        string
-	CORSOrigin          string
-	PublicAPIURL        string
-	AutoMigrate         bool
-	SeedOnEmpty         bool
-	EventBusEnabled     bool
-	KafkaBrokers        []string
-	ConsumerEnabled     bool
-	ConsumerTopic       string
-	ConsumerGroupID     string
+	ServiceName               string
+	Addr                      string
+	Environment               string
+	DatabaseURL               string
+	UseMemoryStore            bool
+	JWTIssuer                 string
+	JWKSURL                   string
+	Audience                  string // aud claim the service requires on inbound tokens
+	GatewayAPIPrefix          string
+	ServiceClientID           string
+	ServiceClientSecret       string
+	AuthTokenURL              string
+	CORSOrigin                string
+	PublicAPIURL              string
+	AutoMigrate               bool
+	SeedOnEmpty               bool
+	EventBusEnabled           bool
+	KafkaBrokers              []string
+	ConsumerEnabled           bool
+	ConsumerTopic             string
+	ConsumerGroupID           string
 	OperationsConsumerEnabled bool
 	OperationsConsumerTopic   string
 	OperationsConsumerGroupID string
-	FinanceURL          string
-	FileStorageDir      string
-	ReadTimeout         time.Duration
-	WriteTimeout        time.Duration
+	FinanceURL                string
+	FileStorageDir            string
+	// S3-compatible object storage. When these are set the attachment store
+	// uses the bucket; otherwise it falls back to FileStorageDir, which is a
+	// local directory and therefore ephemeral on Railway without a volume.
+	S3Endpoint        string
+	S3Region          string
+	S3Bucket          string
+	S3AccessKeyID     string
+	S3SecretAccessKey string
+	S3UseSSL          bool
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
 }
 
 // Load reads configuration from env. Hard cutover: every request must carry a
@@ -51,34 +60,43 @@ func Load() (Config, error) {
 	useMemory := strings.EqualFold(envOr("STORE_MODE", ""), "memory")
 
 	cfg := Config{
-		ServiceName:         envOr("SERVICE_NAME", "dms"),
-		Addr:                ListenAddr(),
-		Environment:         env,
-		DatabaseURL:         dbURL,
-		UseMemoryStore:      useMemory,
-		JWTIssuer:           issuer,
-		JWKSURL:             envOr("JWKS_URL", strings.TrimRight(issuer, "/")+"/.well-known/jwks.json"),
-		Audience:            envOr("AUDIENCE", "iag.dms"),
-		GatewayAPIPrefix:    strings.TrimSpace(envOr("GATEWAY_API_PREFIX", "/api/v1/dms")),
-		ServiceClientID:     envOr("SERVICE_CLIENT_ID", "iag-dms"),
-		ServiceClientSecret: strings.TrimSpace(os.Getenv("SERVICE_CLIENT_SECRET")),
-		AuthTokenURL:        envOr("AUTH_TOKEN_URL", strings.TrimRight(issuer, "/")+"/oauth/token"),
-		CORSOrigin:          corsenv.Allowlist(corsenv.DefaultDevOrigins),
-		PublicAPIURL:        strings.TrimRight(strings.TrimSpace(envOr("PUBLIC_API_URL", "http://localhost:8080")), "/"),
-		AutoMigrate:         envOr("AUTO_MIGRATE", "true") != "false",
-		SeedOnEmpty:         envOr("SEED_ON_EMPTY", "true") != "false",
-		EventBusEnabled:     strings.EqualFold(os.Getenv("EVENT_BUS_ENABLED"), "true"),
-		KafkaBrokers:        parseBrokers(os.Getenv("KAFKA_BROKERS")),
-		ConsumerEnabled:     strings.EqualFold(os.Getenv("CONSUMER_ENABLED"), "true"),
-		ConsumerTopic:       envOr("CONSUMER_TOPIC", "iag.commercial"),
-		ConsumerGroupID:     envOr("CONSUMER_GROUP_ID", "iag-dms"),
+		ServiceName:               envOr("SERVICE_NAME", "dms"),
+		Addr:                      ListenAddr(),
+		Environment:               env,
+		DatabaseURL:               dbURL,
+		UseMemoryStore:            useMemory,
+		JWTIssuer:                 issuer,
+		JWKSURL:                   envOr("JWKS_URL", strings.TrimRight(issuer, "/")+"/.well-known/jwks.json"),
+		Audience:                  envOr("AUDIENCE", "iag.dms"),
+		GatewayAPIPrefix:          strings.TrimSpace(envOr("GATEWAY_API_PREFIX", "/api/v1/dms")),
+		ServiceClientID:           envOr("SERVICE_CLIENT_ID", "iag-dms"),
+		ServiceClientSecret:       strings.TrimSpace(os.Getenv("SERVICE_CLIENT_SECRET")),
+		AuthTokenURL:              envOr("AUTH_TOKEN_URL", strings.TrimRight(issuer, "/")+"/oauth/token"),
+		CORSOrigin:                corsenv.Allowlist(corsenv.DefaultDevOrigins),
+		PublicAPIURL:              strings.TrimRight(strings.TrimSpace(envOr("PUBLIC_API_URL", "http://localhost:8080")), "/"),
+		AutoMigrate:               envOr("AUTO_MIGRATE", "true") != "false",
+		SeedOnEmpty:               envOr("SEED_ON_EMPTY", "true") != "false",
+		EventBusEnabled:           strings.EqualFold(os.Getenv("EVENT_BUS_ENABLED"), "true"),
+		KafkaBrokers:              parseBrokers(os.Getenv("KAFKA_BROKERS")),
+		ConsumerEnabled:           strings.EqualFold(os.Getenv("CONSUMER_ENABLED"), "true"),
+		ConsumerTopic:             envOr("CONSUMER_TOPIC", "iag.commercial"),
+		ConsumerGroupID:           envOr("CONSUMER_GROUP_ID", "iag-dms"),
 		OperationsConsumerEnabled: strings.EqualFold(os.Getenv("OPERATIONS_CONSUMER_ENABLED"), "true"),
 		OperationsConsumerTopic:   envOr("OPERATIONS_CONSUMER_TOPIC", "iag.operations"),
 		OperationsConsumerGroupID: envOr("OPERATIONS_CONSUMER_GROUP_ID", "iag-dms.operations"),
-		FinanceURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("FINANCE_URL")), "/"),
-		FileStorageDir:      envOr("FILE_STORAGE_DIR", "./data/attachments"),
-		ReadTimeout:         30 * time.Second,
-		WriteTimeout:        30 * time.Second,
+		FinanceURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("FINANCE_URL")), "/"),
+		FileStorageDir:            envOr("FILE_STORAGE_DIR", "./data/attachments"),
+		S3Endpoint:                envOr("S3_ENDPOINT", ""),
+		// "auto" is Cloudflare R2's convention and the default the rest of the
+		// platform uses; set a real region for AWS or MinIO.
+		S3Region:          envOr("S3_REGION", "auto"),
+		S3Bucket:          envOr("S3_BUCKET", ""),
+		S3AccessKeyID:     envOr("S3_ACCESS_KEY_ID", ""),
+		S3SecretAccessKey: envOr("S3_SECRET_ACCESS_KEY", ""),
+		// Only a literal "false" disables TLS, so a typo fails safe.
+		S3UseSSL:     !strings.EqualFold(envOr("S3_USE_SSL", "true"), "false"),
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
 	}
 	return cfg, cfg.Validate()
 }
