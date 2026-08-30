@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -260,12 +262,21 @@ func (h *API) RunReport(c *gin.Context) {
 	run := h.Repo.RunReport(in)
 	// Deliver by email when a recipient was supplied (report studio "schedule
 	// delivery"): the notifications service renders and sends it.
+	//
+	// The mail carries a link to the run rather than the data. It previously
+	// said only that a report was ready, with no way to reach it, and reported
+	// back "Report generated and emailed to X" — which read as though the
+	// report itself had been delivered.
 	if strings.TrimSpace(in.EmailTo) != "" && h.Events != nil && h.Events.Enabled() {
+		body := fmt.Sprintf("Your report %q generated %d rows and is ready.", run.Name, run.RowCount)
+		if link := reportRunURL(run.JobID); link != "" {
+			body += "\n\nOpen it here: " + link
+		}
 		h.Events.PublishAlert(c.Request.Context(), "email", in.EmailTo, "dms.alert", map[string]string{
 			"Title": "Report ready: " + run.Name,
-			"Body":  fmt.Sprintf("Your report \"%s\" generated %d rows and is ready.", run.Name, run.RowCount),
+			"Body":  body,
 		}, run.JobID)
-		run.Message = "Report generated and emailed to " + in.EmailTo
+		run.Message = "Report generated; a link was emailed to " + in.EmailTo
 	}
 	status := http.StatusOK
 	if run.Status == "queued" {
@@ -284,4 +295,15 @@ func (h *API) ExportPage(c *gin.Context) {
 	_ = c.ShouldBindJSON(&body)
 	payload := h.Repo.ExportPage(page, body.Format)
 	c.JSON(http.StatusOK, payload)
+}
+
+// reportRunURL deep-links a report run in the DMS frontend. Empty when
+// APP_PUBLIC_URL is unset, in which case the mail simply carries no link
+// rather than an obviously broken one.
+func reportRunURL(jobID string) string {
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("APP_PUBLIC_URL")), "/")
+	if base == "" || jobID == "" {
+		return ""
+	}
+	return base + "/reports/runs/" + url.PathEscape(jobID)
 }
