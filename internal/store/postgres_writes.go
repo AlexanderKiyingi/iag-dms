@@ -364,7 +364,11 @@ func (r *Repository) pgRunReport(ctx context.Context, in models.ReportRunInput) 
 	`, jobID, payload.RowCount, raw)
 	msg := fmt.Sprintf("Report generated (%d rows)", payload.RowCount)
 	if strings.TrimSpace(in.EmailTo) != "" {
-		msg += " — email delivery pending notifications integration"
+		// The handler dispatches the mail (a link to this run) once the job
+		// row is written. This used to say delivery was "pending notifications
+		// integration", which stopped being true when that dispatch was wired
+		// and left operators believing nothing had been sent.
+		msg += " — a link is being emailed to " + strings.TrimSpace(in.EmailTo)
 	}
 	return models.ReportRun{
 		JobID: jobID, Name: name, Status: "completed",
