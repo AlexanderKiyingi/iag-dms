@@ -22,3 +22,20 @@ func NewMemoryWith(f Fixture) *Repository {
 	r.mem.outlets = append(r.mem.outlets, f.Outlets...)
 	return r
 }
+
+// DevFixture is what a local memory-mode instance is preloaded with when
+// MEMORY_FIXTURE=true: one distributor for retailers to be filed under, two
+// beats and the reps who walk them.
+func DevFixture() Fixture {
+	return Fixture{
+		Distributors: []models.Distributor{{ID: "D-001", Name: "Kampala Premium Beverages", Region: "Kampala", Status: "active"}},
+		Beats: []models.Beat{
+			{ID: "BT-01", Name: "Nakawa Tuesday", RepID: "FF-01", RepName: "Aisha Namara", StopCount: 12, DistanceKm: 18.5, Status: "active"},
+			{ID: "BT-02", Name: "Ntinda Thursday", RepID: "FF-02", RepName: "Okello Brian", StopCount: 9, DistanceKm: 11.2, Status: "active"},
+		},
+		Reps: []models.FieldRep{
+			{ID: "FF-01", Name: "Aisha Namara", BeatID: "BT-01", Region: "Kampala", Level: "senior", Status: "active"},
+			{ID: "FF-02", Name: "Okello Brian", BeatID: "BT-02", Region: "Kampala", Level: "junior", Status: "active"},
+		},
+	}
+}

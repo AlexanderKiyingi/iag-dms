@@ -107,6 +107,13 @@ func main() {
 	defer eventBus.Close()
 
 	repo := store.New(pool)
+	// A local memory-mode instance starts empty and has no API to add a
+	// distributor, beat or rep, so a frontend pointed at it can never file a
+	// retailer. MEMORY_FIXTURE=true preloads the reference rows a desk needs.
+	if pool == nil && strings.EqualFold(os.Getenv("MEMORY_FIXTURE"), "true") {
+		repo = store.NewMemoryWith(store.DevFixture())
+		slog.Info("memory store preloaded with the dev fixture")
+	}
 	if pool != nil && eventBus.Enabled() {
 		outboxStore := outbox.NewStore(pool)
 		eventBus.SetOutbox(outboxStore)
