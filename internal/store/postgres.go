@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -56,10 +57,48 @@ func (r *Repository) pgGetDistributor(ctx context.Context, id string) (models.Di
 	return d, nil
 }
 
+// outletColumns is the SELECT list every outlet read shares, so a column added
+// in a migration is picked up by list, get and patch alike.
+const outletColumns = `id, name, address, channel, distributor_id, beat_id, qtd_value_ugx, frequency, score, status, lat, lng,
+		contact, phone, radius_m, credit_limit_ugx, payment_terms, price_list, segment, volume_tier, kyc_status,
+		to_char(license_expiry,'YYYY-MM-DD'), notes, outstanding_ugx, attrs`
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanOutlet(row rowScanner) (models.Outlet, error) {
+	var o models.Outlet
+	var lat, lng *float64
+	var licenseExpiry *string
+	var attrs []byte
+	err := row.Scan(&o.ID, &o.Name, &o.Address, &o.Channel, &o.DistributorID, &o.BeatID,
+		&o.QTDValueUGX, &o.Frequency, &o.Score, &o.Status, &lat, &lng,
+		&o.Contact, &o.Phone, &o.RadiusM, &o.CreditLimitUGX, &o.PaymentTerms, &o.PriceList, &o.Segment,
+		&o.VolumeTier, &o.KYCStatus, &licenseExpiry, &o.Notes, &o.OutstandingUGX, &attrs)
+	if err != nil {
+		return o, err
+	}
+	if lat != nil {
+		o.Lat = *lat
+	}
+	if lng != nil {
+		o.Lng = *lng
+	}
+	if licenseExpiry != nil {
+		o.LicenseExpiry = *licenseExpiry
+	}
+	o.Attrs = map[string]any{}
+	if len(attrs) > 0 {
+		_ = json.Unmarshal(attrs, &o.Attrs)
+	}
+	return o, nil
+}
+
 func (r *Repository) pgListOutlets(ctx context.Context, opts ListOpts) ([]models.Outlet, int) {
 	opts = defaultLimit(opts)
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, name, address, channel, distributor_id, beat_id, qtd_value_ugx, frequency, score, status, lat, lng
+		SELECT `+outletColumns+`
 		FROM dms_outlets
 		WHERE ($1 = '' OR channel ILIKE $1)
 		  AND ($2 = '' OR distributor_id = $2)
@@ -73,16 +112,7 @@ func (r *Repository) pgListOutlets(ctx context.Context, opts ListOpts) ([]models
 	defer rows.Close()
 	var all []models.Outlet
 	for rows.Next() {
-		var o models.Outlet
-		var lat, lng *float64
-		if rows.Scan(&o.ID, &o.Name, &o.Address, &o.Channel, &o.DistributorID, &o.BeatID,
-			&o.QTDValueUGX, &o.Frequency, &o.Score, &o.Status, &lat, &lng) == nil {
-			if lat != nil {
-				o.Lat = *lat
-			}
-			if lng != nil {
-				o.Lng = *lng
-			}
+		if o, err := scanOutlet(rows); err == nil {
 			all = append(all, o)
 		}
 	}
@@ -90,22 +120,22 @@ func (r *Repository) pgListOutlets(ctx context.Context, opts ListOpts) ([]models
 }
 
 func (r *Repository) pgGetOutlet(ctx context.Context, id string) (models.Outlet, error) {
-	items, _ := r.pgListOutlets(ctx, ListOpts{Q: id, Limit: 1})
-	for _, o := range items {
-		if o.ID == id {
-			return o, nil
-		}
-	}
-	var o models.Outlet
-	err := r.pool.QueryRow(ctx, `
-		SELECT id, name, address, channel, distributor_id, beat_id, qtd_value_ugx, frequency, score, status, lat, lng
-		FROM dms_outlets WHERE id = $1`, id).Scan(
-		&o.ID, &o.Name, &o.Address, &o.Channel, &o.DistributorID, &o.BeatID,
-		&o.QTDValueUGX, &o.Frequency, &o.Score, &o.Status, &o.Lat, &o.Lng)
+	o, err := scanOutlet(r.pool.QueryRow(ctx, `SELECT `+outletColumns+` FROM dms_outlets WHERE id = $1`, id))
 	if err == pgx.ErrNoRows {
 		return o, ErrNotFound
 	}
 	return o, err
+}
+
+// pgBeatExists guards beat_id, which carries no FK: a name typed into a
+// picker must not persist as an id no beat has.
+func (r *Repository) pgBeatExists(ctx context.Context, id string) bool {
+	if id == "" {
+		return true
+	}
+	var exists bool
+	_ = r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM dms_beats WHERE id = $1)`, id).Scan(&exists)
+	return exists
 }
 
 func (r *Repository) pgCreateOutlet(ctx context.Context, in models.OutletInput) (models.Outlet, error) {
@@ -116,19 +146,23 @@ func (r *Repository) pgCreateOutlet(ctx context.Context, in models.OutletInput) 
 	if !exists {
 		return models.Outlet{}, fmt.Errorf("%w: distributor %q not found", ErrInvalidInput, in.DistributorID)
 	}
+	if !r.pgBeatExists(ctx, in.BeatID) {
+		return models.Outlet{}, fmt.Errorf("%w: beat %q not found", ErrInvalidInput, in.BeatID)
+	}
 	id, err := r.pgNextID(ctx, "OUT")
 	if err != nil {
 		return models.Outlet{}, err
 	}
-	o := models.Outlet{
-		ID: id, Name: in.Name, Address: in.Address, Channel: in.Channel,
-		DistributorID: in.DistributorID, BeatID: in.BeatID, Lat: in.Lat, Lng: in.Lng,
-		Status: "active", Score: "B", Frequency: "1x/wk",
-	}
+	o := outletFromInput(id, in)
+	attrs, _ := json.Marshal(o.Attrs)
 	if _, err := r.pool.Exec(ctx, `
-		INSERT INTO dms_outlets (id, name, address, channel, distributor_id, beat_id, lat, lng, status, score, frequency)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		o.ID, o.Name, o.Address, o.Channel, o.DistributorID, o.BeatID, o.Lat, o.Lng, o.Status, o.Score, o.Frequency); err != nil {
+		INSERT INTO dms_outlets (id, name, address, channel, distributor_id, beat_id, lat, lng, status, score, frequency,
+			contact, phone, radius_m, credit_limit_ugx, payment_terms, price_list, segment, volume_tier, kyc_status,
+			license_expiry, notes, attrs)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NULLIF($21,'')::date,$22,$23)`,
+		o.ID, o.Name, o.Address, o.Channel, o.DistributorID, o.BeatID, o.Lat, o.Lng, o.Status, o.Score, o.Frequency,
+		o.Contact, o.Phone, o.RadiusM, o.CreditLimitUGX, o.PaymentTerms, o.PriceList, o.Segment, o.VolumeTier, o.KYCStatus,
+		o.LicenseExpiry, o.Notes, attrs); err != nil {
 		return models.Outlet{}, err
 	}
 	_, _ = r.pool.Exec(ctx, `INSERT INTO dms_alerts (id, kind, title, detail) VALUES ($1,'outlet',$2,$3)`,
@@ -264,7 +298,7 @@ func (r *Repository) pgListCheckIns(ctx context.Context, opts ListOpts) ([]model
 	opts = defaultLimit(opts)
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, rep_id, outlet_id, lat, lng, arrived_at, status FROM dms_check_ins
-		WHERE ($1 = '' OR rep_id = $1) ORDER BY arrived_at DESC`, opts.RepID)
+		WHERE ($1 = '' OR rep_id = $1) AND ($2 = '' OR outlet_id = $2) ORDER BY arrived_at DESC`, opts.RepID, opts.OutletID)
 	if err != nil {
 		return nil, 0
 	}

@@ -11,9 +11,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/alvor-technologies/iag-platform-go/apierr"
 	"github.com/iag/dms/backend/internal/ctxkeys"
 	"github.com/iag/dms/backend/internal/platformauth"
-	"github.com/alvor-technologies/iag-platform-go/apierr"
 )
 
 type PlatformAuth struct {

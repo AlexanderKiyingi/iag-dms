@@ -14,19 +14,20 @@ import (
 )
 
 var (
-	ErrNotFound      = errors.New("not found")
-	ErrInvalidInput  = errors.New("invalid input")
+	ErrNotFound     = errors.New("not found")
+	ErrInvalidInput = errors.New("invalid input")
 )
 
 type ListOpts struct {
-	Limit  int
-	Offset int
-	Q      string
-	Status string
-	Channel string
+	Limit         int
+	Offset        int
+	Q             string
+	Status        string
+	Channel       string
 	DistributorID string
-	RepID string
-	BeatID string
+	RepID         string
+	BeatID        string
+	OutletID      string
 }
 
 type memoryState struct {
@@ -186,4 +187,26 @@ func now() time.Time {
 
 func newUUID() string {
 	return uuid.NewString()
+}
+
+// outletFromInput builds the stored outlet for a create, with the defaults
+// both stores apply. KYC starts pending so an outlet is cash-only until a
+// supervisor approves it.
+func outletFromInput(id string, in models.OutletInput) models.Outlet {
+	kyc := strings.ToLower(strings.TrimSpace(in.KYCStatus))
+	if kyc == "" {
+		kyc = "pending"
+	}
+	attrs := in.Attrs
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+	return models.Outlet{
+		ID: id, Name: in.Name, Address: in.Address, Channel: in.Channel,
+		DistributorID: in.DistributorID, BeatID: in.BeatID, Lat: in.Lat, Lng: in.Lng,
+		Status: "active", Score: "B", Frequency: "1x/wk",
+		Contact: in.Contact, Phone: in.Phone, RadiusM: in.RadiusM, CreditLimitUGX: in.CreditLimitUGX,
+		PaymentTerms: in.PaymentTerms, PriceList: in.PriceList, Segment: in.Segment, VolumeTier: in.VolumeTier,
+		KYCStatus: kyc, LicenseExpiry: in.LicenseExpiry, Notes: in.Notes, Attrs: attrs,
+	}
 }

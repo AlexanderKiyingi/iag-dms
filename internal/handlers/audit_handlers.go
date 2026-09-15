@@ -8,9 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/alvor-technologies/iag-platform-go/apierr"
 	"github.com/iag/dms/backend/internal/auth"
 	"github.com/iag/dms/backend/internal/store"
-	"github.com/alvor-technologies/iag-platform-go/apierr"
 )
 
 func (h *API) ListAudit(c *gin.Context) {

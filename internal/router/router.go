@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	platformmw "github.com/alvor-technologies/iag-platform-go/middleware"
+	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/iag/dms/backend/internal/auth"
@@ -120,6 +120,7 @@ func registerDomainRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.DELETE("/field/check-ins/:id", auth.RequirePerm("dms.field_checkin"), api.DeleteCheckIn)
 	v1.GET("/field/visit-reports", auth.RequirePerm("dms.field_checkin"), api.ListVisitReports)
 	v1.POST("/field/visit-reports", auth.RequirePerm("dms.field_checkin"), api.CreateVisitReport)
+	v1.DELETE("/field/visit-reports/:id", auth.RequirePerm("dms.field_checkin"), api.DeleteVisitReport)
 	v1.GET("/field/journey", auth.RequirePerm("dms.field_checkin"), api.Journey)
 	v1.GET("/field/journey/assignments", auth.RequirePerm("dms.field_checkin"), api.ListJourneyAssignments)
 	v1.POST("/field/journey/assign", auth.RequirePerm("dms.field_checkin"), api.CreateJourneyAssignment)

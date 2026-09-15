@@ -269,6 +269,13 @@ func (r *Repository) DeleteOrder(id string) error {
 	return r.mem.deleteOrder(id)
 }
 
+func (r *Repository) DeleteVisitReport(id string) error {
+	if r.pool != nil {
+		return r.pgDelete(r.bg(), "dms_visit_reports", id)
+	}
+	return r.mem.deleteVisitReport(id)
+}
+
 func (r *Repository) DeleteCheckIn(id string) error {
 	if r.pool != nil {
 		return r.pgDeleteCheckIn(r.bg(), id)

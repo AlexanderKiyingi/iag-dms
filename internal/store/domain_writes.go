@@ -119,8 +119,8 @@ func (m *memoryState) createJourneyAssignment(in models.JourneyAssignmentInput) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	a := models.JourneyAssignment{
-		ID:     fmt.Sprintf("JNY-%05d", 1+len(m.journeyAssignments)),
-		RepID:  in.RepID, Date: in.Date, BeatID: in.BeatID, Seq: in.Seq, Status: "planned",
+		ID:    fmt.Sprintf("JNY-%05d", 1+len(m.journeyAssignments)),
+		RepID: in.RepID, Date: in.Date, BeatID: in.BeatID, Seq: in.Seq, Status: "planned",
 	}
 	m.journeyAssignments = append(m.journeyAssignments, a)
 	return a, nil

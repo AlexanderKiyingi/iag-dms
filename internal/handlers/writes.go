@@ -10,19 +10,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/alvor-technologies/iag-platform-go/apierr"
 	"github.com/iag/dms/backend/internal/models"
 	"github.com/iag/dms/backend/internal/store"
-	"github.com/alvor-technologies/iag-platform-go/apierr"
 )
 
 func (h *API) PatchOutlet(c *gin.Context) {
 	var patch models.OutletPatch
-	if err := c.ShouldBindJSON(&patch); err != nil {
+	if err := bindJSONCoerced(c, &patch); err != nil {
 		badRequest(c, "invalid body")
 		return
 	}
-	if patch.Name == "" && patch.Address == "" && patch.Channel == "" && patch.BeatID == "" &&
-		patch.Status == "" && patch.Score == "" && patch.Frequency == "" {
+	if patch.IsEmpty() {
 		badRequest(c, "at least one field required")
 		return
 	}
@@ -30,6 +29,10 @@ func (h *API) PatchOutlet(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			notFound(c)
+			return
+		}
+		if errors.Is(err, store.ErrInvalidInput) {
+			badRequest(c, err.Error())
 			return
 		}
 		apierr.JSONStatus(c, http.StatusInternalServerError, "update failed")
@@ -200,6 +203,10 @@ func (h *API) DeleteOrder(c *gin.Context) {
 
 func (h *API) DeleteCheckIn(c *gin.Context) {
 	h.deleteEntity(c, "check-in", h.Repo.DeleteCheckIn)
+}
+
+func (h *API) DeleteVisitReport(c *gin.Context) {
+	h.deleteEntity(c, "visit-report", h.Repo.DeleteVisitReport)
 }
 
 func (h *API) DeletePromotion(c *gin.Context) {

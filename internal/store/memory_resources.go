@@ -94,13 +94,11 @@ func (m *memoryState) createOutlet(in models.OutletInput) (models.Outlet, error)
 	if !found {
 		return models.Outlet{}, ErrInvalidInput
 	}
-	id := m.nextID("OUT", &m.nextOutlet)
-	o := models.Outlet{
-		ID: id, Name: in.Name, Address: in.Address, Channel: in.Channel,
-		DistributorID: in.DistributorID, BeatID: in.BeatID,
-		Lat: in.Lat, Lng: in.Lng,
-		Status: "active", Score: "B", Frequency: "1x/wk",
+	if in.BeatID != "" && !m.beatExistsLocked(in.BeatID) {
+		return models.Outlet{}, ErrInvalidInput
 	}
+	id := m.nextID("OUT", &m.nextOutlet)
+	o := outletFromInput(id, in)
 	m.outlets = append(m.outlets, o)
 	m.alerts = append([]models.Alert{{
 		ID: newUUID(), Kind: "outlet", Title: "Outlet activated · " + id,
@@ -245,6 +243,9 @@ func (m *memoryState) listCheckIns(opts ListOpts) ([]models.CheckIn, int) {
 		if opts.RepID != "" && c.RepID != opts.RepID {
 			continue
 		}
+		if opts.OutletID != "" && c.OutletID != opts.OutletID {
+			continue
+		}
 		filtered = append(filtered, c)
 	}
 	return paginate(filtered, opts)
@@ -386,7 +387,7 @@ func (m *memoryState) createInvoice(in models.InvoiceInput) models.Invoice {
 		}
 	}
 	inv := models.Invoice{
-		ID: m.nextID("INV", &m.nextOrder),
+		ID:            m.nextID("INV", &m.nextOrder),
 		DistributorID: in.DistributorID, Distributor: name,
 		AmountUGX: in.AmountUGX, DueDate: in.DueDate,
 		Status: "open", OrderID: in.OrderID,
@@ -548,4 +549,12 @@ func (m *memoryState) ordersStats() map[string]any {
 	}
 }
 
-
+// beatExistsLocked assumes the caller holds m.mu.
+func (m *memoryState) beatExistsLocked(id string) bool {
+	for _, b := range m.beats {
+		if b.ID == id {
+			return true
+		}
+	}
+	return false
+}

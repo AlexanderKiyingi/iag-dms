@@ -50,7 +50,7 @@ var Roles = map[string]RoleSpec{
 	},
 	"field_rep": {
 		ID: "field_rep", Label: "Field Rep", Full: "Field Representative",
-		Pages: []string{"checkin", "journey", "outlets"},
+		Pages:  []string{"checkin", "journey", "outlets"},
 		Modals: []string{"mCheckin", "mVisitReport"},
 	},
 }

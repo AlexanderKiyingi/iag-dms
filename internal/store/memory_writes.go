@@ -10,31 +10,14 @@ import (
 func (m *memoryState) patchOutlet(id string, patch models.OutletPatch) (models.Outlet, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for i, o := range m.outlets {
-		if o.ID != id {
+	if patch.BeatID != nil && *patch.BeatID != "" && !m.beatExistsLocked(*patch.BeatID) {
+		return models.Outlet{}, ErrInvalidInput
+	}
+	for i := range m.outlets {
+		if m.outlets[i].ID != id {
 			continue
 		}
-		if patch.Name != "" {
-			m.outlets[i].Name = patch.Name
-		}
-		if patch.Address != "" {
-			m.outlets[i].Address = patch.Address
-		}
-		if patch.Channel != "" {
-			m.outlets[i].Channel = patch.Channel
-		}
-		if patch.BeatID != "" {
-			m.outlets[i].BeatID = patch.BeatID
-		}
-		if patch.Status != "" {
-			m.outlets[i].Status = patch.Status
-		}
-		if patch.Score != "" {
-			m.outlets[i].Score = patch.Score
-		}
-		if patch.Frequency != "" {
-			m.outlets[i].Frequency = patch.Frequency
-		}
+		patch.Apply(&m.outlets[i])
 		return m.outlets[i], nil
 	}
 	return models.Outlet{}, ErrNotFound
@@ -58,6 +41,9 @@ func (m *memoryState) listVisitReports(opts ListOpts) ([]models.VisitReport, int
 	var filtered []models.VisitReport
 	for _, v := range m.visits {
 		if opts.RepID != "" && v.RepID != opts.RepID {
+			continue
+		}
+		if opts.OutletID != "" && v.OutletID != opts.OutletID {
 			continue
 		}
 		filtered = append(filtered, v)
@@ -153,6 +139,12 @@ func (m *memoryState) deleteCheckIn(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return deleteByID(&m.checkIns, id, func(c models.CheckIn) string { return c.ID })
+}
+
+func (m *memoryState) deleteVisitReport(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return deleteByID(&m.visits, id, func(v models.VisitReport) string { return v.ID })
 }
 
 func (m *memoryState) deletePromotion(id string) error {
