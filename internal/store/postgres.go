@@ -38,6 +38,18 @@ func (r *Repository) pgListDistributors(ctx context.Context, opts ListOpts) ([]m
 	return paginate(all, opts)
 }
 
+func (r *Repository) pgCreateDistributor(ctx context.Context, in models.DistributorInput) (models.Distributor, error) {
+	id, err := r.pgNextID(ctx, "D")
+	if err != nil {
+		return models.Distributor{}, err
+	}
+	d := models.Distributor{ID: id, Name: in.Name, Tier: in.Tier, Region: in.Region, Manager: in.Manager, Status: in.Status, OnboardedAt: now()}
+	_, err = r.pool.Exec(ctx, `
+		INSERT INTO dms_distributors (id, name, tier, region, manager, status, onboarded_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`, d.ID, d.Name, d.Tier, d.Region, d.Manager, d.Status, d.OnboardedAt)
+	return d, err
+}
+
 func (r *Repository) pgGetDistributor(ctx context.Context, id string) (models.Distributor, error) {
 	var d models.Distributor
 	var onboarded *time.Time

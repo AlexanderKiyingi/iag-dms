@@ -79,3 +79,17 @@ func TestPatchOutletRejectsUnknownBeat(t *testing.T) {
 		t.Fatalf("real beat refused: %v %+v", err, got)
 	}
 }
+
+func TestCreateDistributorThenFileAnOutletUnderIt(t *testing.T) {
+	r := New(nil)
+	d, err := r.CreateDistributor(models.DistributorInput{Name: "Kampala Premium", Region: "Kampala"})
+	if err != nil || d.ID == "" || d.Status != "active" || d.Tier != 1 {
+		t.Fatalf("distributor not created: %v %+v", err, d)
+	}
+	if _, err := r.CreateDistributor(models.DistributorInput{}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("nameless distributor accepted: %v", err)
+	}
+	if _, err := r.CreateOutlet(models.OutletInput{Name: "Shop", Channel: "Kiosk", DistributorID: d.ID}); err != nil {
+		t.Fatalf("outlet under new distributor refused: %v", err)
+	}
+}

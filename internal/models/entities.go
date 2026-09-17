@@ -71,6 +71,17 @@ type Distributor struct {
 	OnboardedAt time.Time `json:"onboardedAt,omitempty"`
 }
 
+// DistributorInput creates a distributor — the root every outlet is filed
+// under. The demo seed that used to provide one was purged (migration 0008),
+// so without this a fresh DMS can never accept its first retailer.
+type DistributorInput struct {
+	Name    string `json:"name"`
+	Tier    int    `json:"tier"`
+	Region  string `json:"region"`
+	Manager string `json:"manager"`
+	Status  string `json:"status"`
+}
+
 type Outlet struct {
 	ID            string  `json:"id"`
 	Name          string  `json:"name"`

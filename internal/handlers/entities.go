@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,6 +29,26 @@ func (h *API) GetDistributor(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, item)
+}
+
+func (h *API) CreateDistributor(c *gin.Context) {
+	var in models.DistributorInput
+	if err := bindJSONCoerced(c, &in); err != nil || strings.TrimSpace(in.Name) == "" {
+		badRequest(c, "name is required")
+		return
+	}
+	d, err := h.Repo.CreateDistributor(in)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidInput) {
+			badRequest(c, err.Error())
+			return
+		}
+		apierr.JSONStatus(c, http.StatusInternalServerError, "create distributor failed")
+		return
+	}
+	h.publish(c, "dms.distributor.created", gin.H{"id": d.ID, "name": d.Name})
+	h.recordAudit(c, "CreateDistributor", store.AuditDetail("distributor", d.ID, "created"))
+	c.JSON(http.StatusCreated, d)
 }
 
 func (h *API) ListOutlets(c *gin.Context) {
