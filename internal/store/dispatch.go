@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 
 	"github.com/iag/dms/backend/internal/models"
 )
@@ -13,6 +14,23 @@ func (r *Repository) ListDistributors(opts ListOpts) ([]models.Distributor, int)
 		return r.pgListDistributors(r.bg(), opts)
 	}
 	return r.mem.listDistributors(opts)
+}
+
+func (r *Repository) CreateDistributor(in models.DistributorInput) (models.Distributor, error) {
+	if strings.TrimSpace(in.Name) == "" {
+		return models.Distributor{}, invalid("a distributor needs a name")
+	}
+	if in.Tier <= 0 {
+		in.Tier = 1
+	}
+	in.Status = lower(in.Status)
+	if in.Status == "" {
+		in.Status = "active"
+	}
+	if r.pool != nil {
+		return r.pgCreateDistributor(r.bg(), in)
+	}
+	return r.mem.createDistributor(in)
 }
 
 func (r *Repository) GetDistributor(id string) (models.Distributor, error) {

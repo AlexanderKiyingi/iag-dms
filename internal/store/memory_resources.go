@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/iag/dms/backend/internal/models"
@@ -31,6 +32,17 @@ func (m *memoryState) listDistributors(opts ListOpts) ([]models.Distributor, int
 		filtered = append(filtered, d)
 	}
 	return paginate(filtered, opts)
+}
+
+func (m *memoryState) createDistributor(in models.DistributorInput) (models.Distributor, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d := models.Distributor{
+		ID: fmt.Sprintf("D-%03d", len(m.distributors)+1), Name: in.Name, Tier: in.Tier, Region: in.Region,
+		Manager: in.Manager, Status: in.Status, OnboardedAt: now(),
+	}
+	m.distributors = append(m.distributors, d)
+	return d, nil
 }
 
 func (m *memoryState) getDistributor(id string) (models.Distributor, error) {

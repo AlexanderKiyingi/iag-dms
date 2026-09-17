@@ -90,6 +90,7 @@ func registerDomainRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 
 	v1.GET("/distributors", auth.RequirePerm("dms.view_overview"), api.ListDistributors)
 	v1.GET("/distributors/:id", auth.RequirePerm("dms.view_overview"), api.GetDistributor)
+	v1.POST("/distributors", auth.RequirePerm("dms.admin.update"), api.CreateDistributor)
 
 	v1.GET("/outlets/stats", auth.RequirePerm("dms.view_outlets"), api.OutletStats)
 	v1.GET("/outlets", auth.RequirePerm("dms.view_outlets"), api.ListOutlets)
