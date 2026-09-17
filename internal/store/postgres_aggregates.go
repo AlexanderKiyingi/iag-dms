@@ -218,7 +218,7 @@ func (r *Repository) pgKPIBoard(ctx context.Context) models.KPIBoard {
 		var visits int
 		if rows.Scan(&id, &name, &visits) == nil {
 			board = append(board, models.RepScore{
-				RepID: id, RepName: name, Points: float64(70+visits*3), Rank: rank,
+				RepID: id, RepName: name, Points: float64(70 + visits*3), Rank: rank,
 			})
 			rank++
 		}

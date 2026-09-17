@@ -8,13 +8,13 @@ import (
 
 func (h *API) PlatformStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"service":        h.Cfg.ServiceName,
-		"audience":       h.Cfg.Audience,
-		"gatewayPrefix":  h.Cfg.GatewayAPIPrefix,
-		"publicApiUrl":   h.Cfg.PublicAPIURL,
-		"store":          map[bool]string{true: "memory", false: "postgres"}[h.Cfg.UseMemoryStore],
-		"events":         h.Events != nil && h.Events.Enabled(),
-		"consumer":       h.Cfg.ConsumerEnabled,
-		"consumerTopic":  h.Cfg.ConsumerTopic,
+		"service":       h.Cfg.ServiceName,
+		"audience":      h.Cfg.Audience,
+		"gatewayPrefix": h.Cfg.GatewayAPIPrefix,
+		"publicApiUrl":  h.Cfg.PublicAPIURL,
+		"store":         map[bool]string{true: "memory", false: "postgres"}[h.Cfg.UseMemoryStore],
+		"events":        h.Events != nil && h.Events.Enabled(),
+		"consumer":      h.Cfg.ConsumerEnabled,
+		"consumerTopic": h.Cfg.ConsumerTopic,
 	})
 }

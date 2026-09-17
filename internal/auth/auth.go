@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/iag/dms/backend/internal/middleware"
 	"github.com/alvor-technologies/iag-platform-go/apierr"
+	"github.com/iag/dms/backend/internal/middleware"
 )
 
 const strictRBACKey = "strict_rbac"

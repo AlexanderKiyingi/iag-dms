@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/alvor-technologies/iag-platform-go/apierr"
 	"github.com/iag/dms/backend/internal/auth"
 	"github.com/iag/dms/backend/internal/models"
 	"github.com/iag/dms/backend/internal/store"
-	"github.com/alvor-technologies/iag-platform-go/apierr"
 )
 
 func apierrService(c *gin.Context, msg string) {

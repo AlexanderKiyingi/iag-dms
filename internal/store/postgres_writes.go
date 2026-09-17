@@ -17,31 +17,20 @@ func (r *Repository) pgPatchOutlet(ctx context.Context, id string, patch models.
 	if err != nil {
 		return o, err
 	}
-	if patch.Name != "" {
-		o.Name = patch.Name
+	if patch.BeatID != nil && !r.pgBeatExists(ctx, *patch.BeatID) {
+		return models.Outlet{}, fmt.Errorf("%w: beat %q not found", ErrInvalidInput, *patch.BeatID)
 	}
-	if patch.Address != "" {
-		o.Address = patch.Address
-	}
-	if patch.Channel != "" {
-		o.Channel = patch.Channel
-	}
-	if patch.BeatID != "" {
-		o.BeatID = patch.BeatID
-	}
-	if patch.Status != "" {
-		o.Status = patch.Status
-	}
-	if patch.Score != "" {
-		o.Score = patch.Score
-	}
-	if patch.Frequency != "" {
-		o.Frequency = patch.Frequency
-	}
+	patch.Apply(&o)
+	attrs, _ := json.Marshal(o.Attrs)
 	tag, err := r.pool.Exec(ctx, `
-		UPDATE dms_outlets SET name=$2, address=$3, channel=$4, beat_id=$5, status=$6, score=$7, frequency=$8
+		UPDATE dms_outlets SET name=$2, address=$3, channel=$4, beat_id=$5, status=$6, score=$7, frequency=$8,
+			lat=$9, lng=$10, contact=$11, phone=$12, radius_m=$13, credit_limit_ugx=$14, payment_terms=$15,
+			price_list=$16, segment=$17, volume_tier=$18, kyc_status=$19, license_expiry=NULLIF($20,'')::date,
+			notes=$21, attrs=$22
 		WHERE id=$1`,
-		o.ID, o.Name, o.Address, o.Channel, o.BeatID, o.Status, o.Score, o.Frequency)
+		o.ID, o.Name, o.Address, o.Channel, o.BeatID, o.Status, o.Score, o.Frequency,
+		o.Lat, o.Lng, o.Contact, o.Phone, o.RadiusM, o.CreditLimitUGX, o.PaymentTerms,
+		o.PriceList, o.Segment, o.VolumeTier, o.KYCStatus, o.LicenseExpiry, o.Notes, attrs)
 	if err != nil {
 		return models.Outlet{}, err
 	}
@@ -91,8 +80,8 @@ func (r *Repository) SetInvoiceDocument(id, url string) error {
 
 func (r *Repository) pgListVisitReports(ctx context.Context, opts ListOpts) ([]models.VisitReport, int) {
 	opts = defaultLimit(opts)
-	q := `SELECT id, rep_id, outlet_id, outcome, notes, lat, lng, created_at FROM dms_visit_reports WHERE ($1 = '' OR rep_id = $1) ORDER BY created_at DESC`
-	rows, err := r.pool.Query(ctx, q, opts.RepID)
+	q := `SELECT id, rep_id, outlet_id, outcome, notes, lat, lng, created_at FROM dms_visit_reports WHERE ($1 = '' OR rep_id = $1) AND ($2 = '' OR outlet_id = $2) ORDER BY created_at DESC`
+	rows, err := r.pool.Query(ctx, q, opts.RepID, opts.OutletID)
 	if err != nil {
 		return nil, 0
 	}

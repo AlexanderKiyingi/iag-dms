@@ -10,6 +10,8 @@ import (
 type Repository struct {
 	pool *pgxpool.Pool
 	mem  *memoryState
+	// sec is built lazily by secondary(); see secondary.go.
+	sec *Secondary
 }
 
 func New(pool *pgxpool.Pool) *Repository {

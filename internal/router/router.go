@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	platformmw "github.com/alvor-technologies/iag-platform-go/middleware"
+	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/iag/dms/backend/internal/auth"
@@ -120,6 +120,7 @@ func registerDomainRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.DELETE("/field/check-ins/:id", auth.RequirePerm("dms.field_checkin"), api.DeleteCheckIn)
 	v1.GET("/field/visit-reports", auth.RequirePerm("dms.field_checkin"), api.ListVisitReports)
 	v1.POST("/field/visit-reports", auth.RequirePerm("dms.field_checkin"), api.CreateVisitReport)
+	v1.DELETE("/field/visit-reports/:id", auth.RequirePerm("dms.field_checkin"), api.DeleteVisitReport)
 	v1.GET("/field/journey", auth.RequirePerm("dms.field_checkin"), api.Journey)
 	v1.GET("/field/journey/assignments", auth.RequirePerm("dms.field_checkin"), api.ListJourneyAssignments)
 	v1.POST("/field/journey/assign", auth.RequirePerm("dms.field_checkin"), api.CreateJourneyAssignment)
@@ -141,6 +142,42 @@ func registerDomainRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.POST("/dispatch", auth.RequirePerm("dms.manage_dispatch"), api.CreateDispatch)
 	v1.PATCH("/dispatch/:id", auth.RequirePerm("dms.manage_dispatch"), api.PatchDispatch)
 	v1.DELETE("/dispatch/:id", auth.RequirePerm("dms.manage_dispatch"), api.DeleteDispatch)
+
+	// Secondary-sales desk (distributor → retailer). See handlers/secondary.go.
+	v1.GET("/van-loads", auth.RequirePerm("dms.view_secondary"), api.ListVanLoads)
+	v1.POST("/van-loads", auth.RequirePerm("dms.manage_secondary"), api.CreateVanLoad)
+	v1.GET("/van-loads/:id", auth.RequirePerm("dms.view_secondary"), api.GetVanLoad)
+	v1.PATCH("/van-loads/:id", auth.RequirePerm("dms.manage_secondary"), api.UpdateVanLoad)
+	v1.DELETE("/van-loads/:id", auth.RequirePerm("dms.manage_secondary"), api.DeleteVanLoad)
+	v1.GET("/secondary-invoices", auth.RequirePerm("dms.view_secondary"), api.ListSecondaryInvoices)
+	v1.POST("/secondary-invoices", auth.RequirePerm("dms.manage_secondary"), api.CreateSecondaryInvoice)
+	v1.GET("/secondary-invoices/:id", auth.RequirePerm("dms.view_secondary"), api.GetSecondaryInvoice)
+	v1.PATCH("/secondary-invoices/:id", auth.RequirePerm("dms.manage_secondary"), api.UpdateSecondaryInvoice)
+	v1.DELETE("/secondary-invoices/:id", auth.RequirePerm("dms.manage_secondary"), api.DeleteSecondaryInvoice)
+	v1.GET("/collections", auth.RequirePerm("dms.view_secondary"), api.ListCollections)
+	v1.POST("/collections", auth.RequirePerm("dms.manage_secondary"), api.CreateCollection)
+	v1.PATCH("/collections/:id", auth.RequirePerm("dms.manage_secondary"), api.UpdateCollection)
+	v1.DELETE("/collections/:id", auth.RequirePerm("dms.manage_secondary"), api.DeleteCollection)
+	v1.GET("/outlet-returns", auth.RequirePerm("dms.view_secondary"), api.ListOutletReturns)
+	v1.POST("/outlet-returns", auth.RequirePerm("dms.manage_secondary"), api.CreateOutletReturn)
+	v1.PATCH("/outlet-returns/:id", auth.RequirePerm("dms.manage_secondary"), api.UpdateOutletReturn)
+	v1.DELETE("/outlet-returns/:id", auth.RequirePerm("dms.manage_secondary"), api.DeleteOutletReturn)
+	v1.GET("/van-recons", auth.RequirePerm("dms.view_secondary"), api.ListVanRecons)
+	v1.POST("/van-recons", auth.RequirePerm("dms.manage_secondary"), api.CreateVanRecon)
+	v1.PATCH("/van-recons/:id", auth.RequirePerm("dms.manage_secondary"), api.UpdateVanRecon)
+	v1.DELETE("/van-recons/:id", auth.RequirePerm("dms.manage_secondary"), api.DeleteVanRecon)
+	v1.GET("/schemes", auth.RequirePerm("dms.view_secondary"), api.ListSchemes)
+	v1.POST("/schemes", auth.RequirePerm("dms.manage_schemes"), api.CreateScheme)
+	v1.PATCH("/schemes/:id", auth.RequirePerm("dms.manage_schemes"), api.UpdateScheme)
+	v1.DELETE("/schemes/:id", auth.RequirePerm("dms.manage_schemes"), api.DeleteScheme)
+	v1.GET("/rep-targets", auth.RequirePerm("dms.view_secondary"), api.ListRepTargets)
+	v1.POST("/rep-targets", auth.RequirePerm("dms.manage_secondary"), api.CreateRepTarget)
+	v1.PATCH("/rep-targets/:id", auth.RequirePerm("dms.manage_secondary"), api.UpdateRepTarget)
+	v1.DELETE("/rep-targets/:id", auth.RequirePerm("dms.manage_secondary"), api.DeleteRepTarget)
+	v1.GET("/damage-claims", auth.RequirePerm("dms.view_secondary"), api.ListDamageClaims)
+	v1.POST("/damage-claims", auth.RequirePerm("dms.manage_secondary"), api.CreateDamageClaim)
+	v1.PATCH("/damage-claims/:id", auth.RequirePerm("dms.manage_secondary"), api.UpdateDamageClaim)
+	v1.DELETE("/damage-claims/:id", auth.RequirePerm("dms.manage_secondary"), api.DeleteDamageClaim)
 
 	v1.GET("/stock/distributor", auth.RequirePerm("dms.view_overview"), api.ListStock)
 	v1.GET("/stock/skus", auth.RequirePerm("dms.view_overview"), api.ListSKUs)

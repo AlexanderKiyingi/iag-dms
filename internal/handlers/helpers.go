@@ -11,8 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/iag/dms/backend/internal/store"
 	"github.com/alvor-technologies/iag-platform-go/apierr"
+	"github.com/iag/dms/backend/internal/store"
 )
 
 // bindJSONCoerced reads the raw request body, rewrites string-encoded
@@ -159,7 +159,7 @@ func listOpts(c *gin.Context) store.ListOpts {
 		Limit: limit, Offset: offset, Q: c.Query("q"),
 		Status: c.Query("status"), Channel: c.Query("channel"),
 		DistributorID: c.Query("distributorId"), RepID: c.Query("repId"),
-		BeatID: c.Query("beatId"),
+		BeatID: c.Query("beatId"), OutletID: c.Query("outletId"),
 	}
 }
 

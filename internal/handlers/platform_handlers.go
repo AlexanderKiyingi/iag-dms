@@ -5,10 +5,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/alvor-technologies/iag-platform-go/apierr"
 	"github.com/iag/dms/backend/internal/auth"
 	"github.com/iag/dms/backend/internal/middleware"
 	"github.com/iag/dms/backend/internal/models"
-	"github.com/alvor-technologies/iag-platform-go/apierr"
 )
 
 func (h *API) sessionFromContext(c *gin.Context) map[string]any {
