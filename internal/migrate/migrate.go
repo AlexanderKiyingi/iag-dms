@@ -64,7 +64,10 @@ func Up(ctx context.Context, pool *pgxpool.Pool, fsys fs.FS) ([]string, error) {
 			slog.Info("migration applied", "version", m.Version)
 		case prev.Checksum != m.Checksum:
 			if !supersededChecksums[m.Version][prev.Checksum] {
-				return newlyApplied, fmt.Errorf("migration %s checksum mismatch", m.Version)
+				// Name both sums: the ledger's is the one an operator has to look up
+				// to heal this, and without it the log line is a dead end.
+				return newlyApplied, fmt.Errorf("migration %s checksum mismatch: ledger has %s, file is %s",
+					m.Version, prev.Checksum, m.Checksum)
 			}
 			if err := restamp(ctx, pool, m); err != nil {
 				return newlyApplied, fmt.Errorf("restamp %s: %w", m.Version, err)
