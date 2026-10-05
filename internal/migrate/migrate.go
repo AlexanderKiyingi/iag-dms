@@ -144,7 +144,26 @@ func seedFromLegacyLedger(ctx context.Context, pool *pgxpool.Pool, migs []Migrat
 //	an EXISTS check: unchanged wherever the SKU is present, a no-op where it is
 //	not. Databases that already applied the original file keep their rows and are
 //	simply re-stamped.
+//	0001_initial has one commit in this repository, dated 2026-05-26, and has
+//	never been edited since. Production nevertheless recorded a different
+//	checksum when it applied the file on 2026-08-27, so the build that ran it
+//	carried a copy that is no longer reachable from any branch here — a
+//	rewritten or force-pushed history, most likely.
+//
+//	The guard then did exactly its job and refused to migrate, which took the
+//	whole service down: DMS crash-looped from 2026-10-03, every endpoint
+//	answered 502, and 0010_outlet_commercial and 0011_secondary_sales never
+//	ran — which is why creating an outlet, a van load or a collection failed.
+//
+//	Healing is safe here because it is bookkeeping, not re-execution: restamp
+//	never re-runs the body, and every one of the twenty tables 0001_initial
+//	defines already exists in the live schema with the columns it declares. The
+//	database is what the current file would have produced; only the recorded
+//	sum disagreed.
 var supersededChecksums = map[string]map[string]bool{
+	"0001_initial": {
+		"3560eb31ab05a82ae2b37794c126a0e8aa23ac93a70fd4ace84649f98f06f8c8": true,
+	},
 	"0002_forecast_points": {
 		"c23c47ebca091f5a31a8cb3c88a31625e5d1a5a4c789095f1d2935ea7fb79aee": true,
 	},
