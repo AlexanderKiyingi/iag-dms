@@ -164,6 +164,28 @@ var supersededChecksums = map[string]map[string]bool{
 	"0001_initial": {
 		"3560eb31ab05a82ae2b37794c126a0e8aa23ac93a70fd4ace84649f98f06f8c8": true,
 	},
+	// The same lost history, four more versions deep. Healing 0001 moved the
+	// migrator on to 0003 and it stopped there; each of these has one commit
+	// here and has never been edited, and each recorded a different sum in
+	// production. Listing them together rather than one per deploy, because a
+	// crash-looping service costs a deploy cycle per discovery.
+	//
+	// Every table and column these four define was checked against the live
+	// dms schema first: 3 tables for 0003, 3 tables and 5 columns for 0005,
+	// 1 table for 0006, 3 columns for 0007 — all present. The database is
+	// what these files would have produced.
+	"0003_platform": {
+		"3dfcad061b8488330635497cd031a3dd4cf4579e00f2d934d9f36f1fabfc4776": true,
+	},
+	"0005_domain_writes": {
+		"4b920d0f3899955f6bca01c4b604d07abf07f3d81fd929a1a3327f2cc5711d08": true,
+	},
+	"0006_attachments": {
+		"27dd06860816be0f8e2a1b6166ee8d7ad9424d308d74ab3165ef5431b239fefc": true,
+	},
+	"0007_invoice_fiscal": {
+		"5e79a72b0b9301e8663231214da56adc1076078fcbf98bb52b02d33e306de080": true,
+	},
 	"0002_forecast_points": {
 		"c23c47ebca091f5a31a8cb3c88a31625e5d1a5a4c789095f1d2935ea7fb79aee": true,
 	},
