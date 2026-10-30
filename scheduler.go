@@ -36,16 +36,29 @@ func runReportScheduler(ctx context.Context, repo *store.Repository, bus *events
 				if channel == "" {
 					channel = "email"
 				}
-				// WhatsApp needs a whatsapp-channel template; all other channels use
-				// the generic email/text alert template.
-				template := "dms.alert"
-				if channel == "whatsapp" {
+				// Each notification template exists on one channel only, so the
+				// template follows the channel. An older schedule stored with a
+				// channel that has no report template is skipped, loudly,
+				// rather than failing at the notifications service unseen.
+				var template string
+				switch channel {
+				case "email":
+					template = "dms.alert"
+				case "whatsapp":
 					template = "dms.alert.whatsapp"
+				case "in_app":
+					template = "alert-in-app"
+				default:
+					slog.WarnContext(ctx, "scheduled report not delivered: no template for channel",
+						"schedule", s.ID, "channel", channel)
+					continue
 				}
+				body := fmt.Sprintf("Your scheduled report \"%s\" generated %d rows.", run.Name, run.RowCount)
 				if bus != nil && bus.Enabled() && s.Recipient != "" {
 					bus.PublishAlert(ctx, channel, s.Recipient, template, map[string]string{
-						"Title": "Scheduled report: " + run.Name,
-						"Body":  fmt.Sprintf("Your scheduled report \"%s\" generated %d rows.", run.Name, run.RowCount),
+						"Title":   "Scheduled report: " + run.Name,
+						"Body":    body,
+						"Message": body, // alert-in-app renders Message
 					}, run.JobID)
 				}
 				slog.InfoContext(ctx, "scheduled report delivered", "schedule", s.ID, "recipient", s.Recipient, "channel", channel)

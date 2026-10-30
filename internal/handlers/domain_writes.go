@@ -129,6 +129,15 @@ func (h *API) CreateReportSchedule(c *gin.Context) {
 		badRequest(c, "recipient is required")
 		return
 	}
+	// Only channels that have a report template. Anything else (sms, push)
+	// was stored and then failed every run with a template channel mismatch
+	// that nobody saw.
+	switch in.Channel {
+	case "", "email", "whatsapp", "in_app":
+	default:
+		badRequest(c, "channel must be email, whatsapp or in_app")
+		return
+	}
 	s, err := h.Repo.CreateReportSchedule(in)
 	if err != nil {
 		writeStoreErr(c, err, "create failed")

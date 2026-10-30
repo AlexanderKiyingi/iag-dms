@@ -198,12 +198,19 @@ func (b *Bus) PublishAlertTo(ctx context.Context, channel, audience, recipient, 
 	_ = b.Publish(ctx, TypeAlertRaised, data)
 }
 
+// defaultNotifyChannel is the channel for an alert that names none. Every
+// such alert uses dms.alert, which exists only on email, so NOTIFY_CHANNEL set
+// to anything else failed every one of them at the notifications service.
 func defaultNotifyChannel() string {
-	if ch := strings.TrimSpace(os.Getenv("NOTIFY_CHANNEL")); ch != "" {
-		return ch
+	if ch := strings.TrimSpace(os.Getenv("NOTIFY_CHANNEL")); ch != "" && ch != "email" {
+		notifyChannelOnce.Do(func() {
+			slog.Warn("NOTIFY_CHANNEL ignored: dms.alert is an email template", "NOTIFY_CHANNEL", ch)
+		})
 	}
 	return "email"
 }
+
+var notifyChannelOnce sync.Once
 
 // DefaultNotifyRecipient is the fallback recipient (ops/finance desk).
 func DefaultNotifyRecipient() string {
