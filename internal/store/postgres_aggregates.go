@@ -202,13 +202,14 @@ func (r *Repository) applyJourneyCheckInStatus(ctx context.Context, repID string
 }
 
 func (r *Repository) pgKPIBoard(ctx context.Context) models.KPIBoard {
+	period := time.Now().Format("Jan 2006")
 	rows, err := r.pool.Query(ctx, `
 		SELECT r.id, r.name, COUNT(c.id)::int
 		FROM dms_field_reps r
 		LEFT JOIN dms_check_ins c ON c.rep_id = r.id AND c.status = 'completed'
 		GROUP BY r.id, r.name ORDER BY COUNT(c.id) DESC LIMIT 5`)
 	if err != nil {
-		return models.KPIBoard{Period: time.Now().Format("Jan 2006")}
+		return models.KPIBoard{Period: period}
 	}
 	defer rows.Close()
 	var board []models.RepScore
@@ -223,12 +224,17 @@ func (r *Repository) pgKPIBoard(ctx context.Context) models.KPIBoard {
 			rank++
 		}
 	}
-	if len(board) == 0 {
-		return models.KPIBoard{Period: time.Now().Format("Jan 2006")}
+	stats := r.pgRoutesStats(ctx)
+	checkIns := r.pgCheckInStats(ctx)
+	strike, _ := stats["strikeRatePct"].(float64)
+	journey, _ := stats["journeyCompletionPct"].(float64)
+	callRate, _ := checkIns["callRate"].(float64)
+	targets := []models.KPITarget{
+		{Key: "strike_rate", Label: "Strike rate", Actual: strike, Target: 70, Unit: "%"},
+		{Key: "journey_completion", Label: "Journey completion", Actual: journey, Target: 85, Unit: "%"},
+		{Key: "call_rate", Label: "Call rate", Actual: callRate, Target: 8, Unit: "visits/rep"},
 	}
-	return models.KPIBoard{
-		Period: time.Now().Format("Jan 2006"), Leaderboard: board,
-	}
+	return models.KPIBoard{Period: period, Leaderboard: board, Targets: targets}
 }
 
 func (r *Repository) pgAnalytics(ctx context.Context) models.AnalyticsSummary {
@@ -308,12 +314,41 @@ func (r *Repository) pgRoutesStats(ctx context.Context) map[string]any {
 	var dist float64
 	_ = r.pool.QueryRow(ctx, `SELECT COUNT(*)::int, COALESCE(SUM(stop_count),0)::int, COALESCE(AVG(distance_km),0)::float8 FROM dms_beats`).Scan(&beats, &stops, &dist)
 	if beats == 0 {
-		return map[string]any{"activeBeats": 0, "avgStops": 0, "avgDistanceKm": 0}
+		return map[string]any{
+			"activeBeats": 0, "avgStops": 0, "avgDistanceKm": 0,
+			"strikeRatePct": 0.0, "journeyCompletionPct": 0.0, "onTimePct": 0.0,
+		}
 	}
 	avgStops := float64(stops) / float64(beats)
+
+	var planned, completed int
+	_ = r.pool.QueryRow(ctx, `
+		SELECT COUNT(*)::int,
+		       COUNT(*) FILTER (WHERE lower(status) IN ('completed','done','visited'))::int
+		FROM dms_journey_assignments`).Scan(&planned, &completed)
+	journeyPct := 0.0
+	if planned > 0 {
+		journeyPct = math.Round(float64(completed)/float64(planned)*1000) / 10
+	}
+
+	var visits, orderedOutlets int
+	_ = r.pool.QueryRow(ctx, `SELECT COUNT(*)::int FROM dms_check_ins WHERE status = 'completed'`).Scan(&visits)
+	_ = r.pool.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT outlet_id)::int FROM dms_secondary_invoices
+		WHERE lower(status) IN ('invoiced','paid','confirmed')`).Scan(&orderedOutlets)
+	strike := 0.0
+	if visits > 0 {
+		strike = math.Round(float64(orderedOutlets)/float64(visits)*1000) / 10
+		if strike > 100 {
+			strike = 100
+		}
+	}
+
 	return map[string]any{
 		"activeBeats": beats, "avgStops": math.Round(avgStops*10) / 10,
 		"avgDistanceKm": math.Round(dist*10) / 10,
+		"strikeRatePct": strike, "journeyCompletionPct": journeyPct,
+		"onTimePct": journeyPct,
 	}
 }
 
@@ -341,10 +376,11 @@ func (r *Repository) pgCheckInStats(ctx context.Context) map[string]any {
 		SELECT COUNT(*)::int FROM dms_check_ins
 		WHERE arrived_at >= CURRENT_DATE`).Scan(&visits)
 	if total == 0 {
-		return map[string]any{"clockedIn": 0, "totalReps": 0, "visitsToday": 0}
+		return map[string]any{"clockedIn": 0, "totalReps": 0, "visitsToday": 0, "callRate": 0.0}
 	}
+	callRate := math.Round(float64(visits)/float64(total)*10) / 10
 	return map[string]any{
-		"clockedIn": clocked, "totalReps": total, "visitsToday": visits,
+		"clockedIn": clocked, "totalReps": total, "visitsToday": visits, "callRate": callRate,
 	}
 }
 

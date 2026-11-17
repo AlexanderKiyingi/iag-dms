@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Page domains mirror the DMS frontend (dmsiag) sidebar sections.
 
@@ -114,6 +117,39 @@ type Outlet struct {
 	Attrs          map[string]any `json:"attrs"`
 }
 
+// Known price-list / volume-tier labels the distribution desk offers. Stored
+// lowercase; unknown values pass through so legacy free-text rows stay valid.
+var PriceLists = []string{"wholesale", "retail", "other"}
+var VolumeTiers = []string{"bronze", "silver", "gold", "platinum", "other"}
+
+func NormalizePriceList(raw string) string {
+	return normalizeDeskLabel(raw, PriceLists)
+}
+
+func NormalizeVolumeTier(raw string) string {
+	return normalizeDeskLabel(raw, VolumeTiers)
+}
+
+func normalizeDeskLabel(raw string, allowed []string) string {
+	key := strings.ToLower(strings.TrimSpace(raw))
+	if key == "" {
+		return ""
+	}
+	for _, a := range allowed {
+		if key == a {
+			return a
+		}
+	}
+	// Accept "Whole sale" / "Volume Gold" style labels from older forms.
+	compact := strings.ReplaceAll(key, " ", "")
+	for _, a := range allowed {
+		if compact == a {
+			return a
+		}
+	}
+	return key
+}
+
 type OutletInput struct {
 	Name          string  `json:"name"`
 	Address       string  `json:"address"`
@@ -220,13 +256,13 @@ func (p OutletPatch) Apply(o *Outlet) {
 		o.PaymentTerms = *p.PaymentTerms
 	}
 	if p.PriceList != nil {
-		o.PriceList = *p.PriceList
+		o.PriceList = NormalizePriceList(*p.PriceList)
 	}
 	if p.Segment != nil {
 		o.Segment = *p.Segment
 	}
 	if p.VolumeTier != nil {
-		o.VolumeTier = *p.VolumeTier
+		o.VolumeTier = NormalizeVolumeTier(*p.VolumeTier)
 	}
 	if p.KYCStatus != nil {
 		o.KYCStatus = *p.KYCStatus

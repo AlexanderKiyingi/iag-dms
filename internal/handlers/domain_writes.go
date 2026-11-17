@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -51,6 +52,43 @@ func (h *API) PatchJourneyAssignment(c *gin.Context) {
 
 func (h *API) DeleteJourneyAssignment(c *gin.Context) {
 	h.deleteEntity(c, "journey", h.Repo.DeleteJourneyAssignment)
+}
+
+// ---- Field reps ------------------------------------------------------------
+
+func (h *API) CreateRep(c *gin.Context) {
+	var in models.FieldRep
+	if err := bindJSONCoerced(c, &in); err != nil || strings.TrimSpace(in.Name) == "" {
+		badRequest(c, "name is required")
+		return
+	}
+	rep, err := h.Repo.CreateRep(in)
+	if err != nil {
+		writeStoreErr(c, err, "create failed")
+		return
+	}
+	h.publish(c, "dms.rep.created", gin.H{"id": rep.ID, "name": rep.Name})
+	h.recordAudit(c, "CreateRep", store.AuditDetail("field-rep", rep.ID, "created"))
+	c.JSON(http.StatusCreated, rep)
+}
+
+func (h *API) PatchRep(c *gin.Context) {
+	var in models.FieldRep
+	if err := bindJSONCoerced(c, &in); err != nil {
+		badRequest(c, "invalid body")
+		return
+	}
+	rep, err := h.Repo.UpdateRep(c.Param("id"), in)
+	if err != nil {
+		writeStoreErr(c, err, "update failed")
+		return
+	}
+	h.recordAudit(c, "PatchRep", store.AuditDetail("field-rep", rep.ID, "updated"))
+	c.JSON(http.StatusOK, rep)
+}
+
+func (h *API) DeleteRep(c *gin.Context) {
+	h.deleteEntity(c, "field-rep", h.Repo.DeleteRep)
 }
 
 // ---- Pricing lifecycle -----------------------------------------------------

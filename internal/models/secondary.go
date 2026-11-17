@@ -10,6 +10,8 @@ import "time"
 // filtering; everything else lives in the JSON document.
 
 // VanLoad is a primary movement: warehouse → van. It is never revenue.
+// Prefer Lines for multi-SKU loads; ItemID/Quantity/Batches remain for
+// single-line legacy rows and as rolled-up totals when Lines is set.
 type VanLoad struct {
 	ID           string         `json:"id"`
 	Date         string         `json:"date"`
@@ -21,6 +23,7 @@ type VanLoad struct {
 	Batch        string         `json:"batch"`
 	ExpiryDate   string         `json:"expiryDate"`
 	Batches      []VanLoadBatch `json:"batches"`
+	Lines        []VanLoadLine  `json:"lines,omitempty"`
 	SaleKind     string         `json:"saleKind"`     // always "primary"
 	PostingClass string         `json:"postingClass"` // always "internal-transfer"
 	Status       string         `json:"status"`       // loaded | in_transit | returned
@@ -33,6 +36,15 @@ type VanLoadBatch struct {
 	Batch      string  `json:"batch"`
 	ExpiryDate string  `json:"expiryDate"`
 	Quantity   float64 `json:"quantity"`
+}
+
+// VanLoadLine is one SKU (with optional FEFO batches) on a multi-item van load.
+type VanLoadLine struct {
+	ItemID     string         `json:"itemId"`
+	Quantity   float64        `json:"quantity"`
+	Batch      string         `json:"batch,omitempty"`
+	ExpiryDate string         `json:"expiryDate,omitempty"`
+	Batches    []VanLoadBatch `json:"batches,omitempty"`
 }
 
 func (v VanLoad) DocID() string                     { return v.ID }
@@ -64,6 +76,8 @@ type SecondaryInvoice struct {
 	OutstandingUGX float64   `json:"outstandingUgx"` // derived: amount − collections − credited returns
 	Status         string    `json:"status"`         // draft | invoiced | paid | void
 	Notes          string    `json:"notes"`
+	// Supporting files uploaded via /api/attachments (refs only, no blobs).
+	Attachments    []any     `json:"attachments,omitempty"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
@@ -85,6 +99,7 @@ type Collection struct {
 	RemainingOnInvoiceUGX float64   `json:"remainingOnInvoiceUgx"` // derived
 	Status                string    `json:"status"`                // collected | deposited | void
 	Notes                 string    `json:"notes"`
+	Attachments           []any     `json:"attachments,omitempty"`
 	CreatedAt             time.Time `json:"createdAt"`
 	UpdatedAt             time.Time `json:"updatedAt"`
 }
@@ -106,6 +121,7 @@ type OutletReturn struct {
 	CreditAmountUGX      float64   `json:"creditAmountUgx"`
 	Status               string    `json:"status"` // received | credited | cancelled
 	Notes                string    `json:"notes"`
+	Attachments          []any     `json:"attachments,omitempty"`
 	CreatedAt            time.Time `json:"createdAt"`
 	UpdatedAt            time.Time `json:"updatedAt"`
 }
@@ -163,27 +179,37 @@ type Scheme struct {
 func (s Scheme) DocID() string                     { return s.ID }
 func (s Scheme) DocKeys() (string, string, string) { return s.Status, "", "" }
 
-// RepTarget: targets are typed, achievement and incentive are computed.
+// RepTarget: targets are typed; volume/collection/onboarding actuals are
+// rolled up from secondary sales when AutoActuals is true (default).
 type RepTarget struct {
-	ID               string    `json:"id"`
-	RepID            string    `json:"repId"`
-	RepName          string    `json:"repName"`
-	Period           string    `json:"period"`
-	VolumeTarget     float64   `json:"volumeTarget"`
-	VolumeActual     float64   `json:"volumeActual"`
-	CollectionTarget float64   `json:"collectionTarget"`
-	CollectionActual float64   `json:"collectionActual"`
-	OnboardingTarget float64   `json:"onboardingTarget"`
-	OnboardedActual  float64   `json:"onboardedActual"`
-	IncentiveRate    float64   `json:"incentiveRate"`
-	VolumePct        float64   `json:"volumePct"`      // derived
-	CollectionPct    float64   `json:"collectionPct"`  // derived
-	OnboardingPct    float64   `json:"onboardingPct"`  // derived
-	AchievementPct   float64   `json:"achievementPct"` // derived
-	IncentiveUGX     float64   `json:"incentiveUgx"`   // derived
-	Status           string    `json:"status"`         // active | closed
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	ID               string            `json:"id"`
+	RepID            string            `json:"repId"`
+	RepName          string            `json:"repName"`
+	Period           string            `json:"period"`
+	VolumeTarget     float64           `json:"volumeTarget"`
+	VolumeActual     float64           `json:"volumeActual"`
+	CollectionTarget float64           `json:"collectionTarget"`
+	CollectionActual float64           `json:"collectionActual"`
+	OnboardingTarget float64           `json:"onboardingTarget"`
+	OnboardedActual  float64           `json:"onboardedActual"`
+	IncentiveRate    float64           `json:"incentiveRate"`
+	SkuLines         []RepTargetSkuLine `json:"skuLines,omitempty"`
+	AutoActuals      *bool             `json:"autoActuals,omitempty"` // nil/true = roll up from desk sales
+	VolumePct        float64           `json:"volumePct"`               // derived
+	CollectionPct    float64           `json:"collectionPct"`           // derived
+	OnboardingPct    float64           `json:"onboardingPct"`           // derived
+	AchievementPct   float64           `json:"achievementPct"`          // derived
+	IncentiveUGX     float64           `json:"incentiveUgx"`            // derived
+	Status           string            `json:"status"`                  // active | closed
+	CreatedAt        time.Time         `json:"createdAt"`
+	UpdatedAt        time.Time         `json:"updatedAt"`
+}
+
+// RepTargetSkuLine breaks a volume target down by SKU.
+type RepTargetSkuLine struct {
+	ItemID       string  `json:"itemId"`
+	VolumeTarget float64 `json:"volumeTarget"`
+	VolumeActual float64 `json:"volumeActual"` // derived when AutoActuals
 }
 
 func (r RepTarget) DocID() string                     { return r.ID }
@@ -199,6 +225,7 @@ type DamageClaim struct {
 	ItemID         string    `json:"itemId"`
 	Quantity       float64   `json:"quantity"`
 	Notes          string    `json:"notes"`
+	Attachments    []any     `json:"attachments,omitempty"`
 	Status         string    `json:"status"` // open | with_fleet | closed
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`

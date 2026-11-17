@@ -81,6 +81,7 @@ func (r *Repository) GetVanLoad(id string) (models.VanLoad, error) {
 
 // normaliseVanLoad applies FEFO: batches are ordered nearest-expiry first and
 // the headline batch/expiry is the first one when the caller left it blank.
+// Multi-SKU loads use Lines; headline ItemID/Quantity roll up from them.
 func normaliseVanLoad(v *models.VanLoad) error {
 	v.SaleKind = "primary"
 	v.PostingClass = "internal-transfer"
@@ -88,6 +89,46 @@ func normaliseVanLoad(v *models.VanLoad) error {
 		v.Status = "loaded"
 	}
 	v.Status = lower(v.Status)
+
+	if len(v.Lines) > 0 {
+		var total float64
+		for i := range v.Lines {
+			line := &v.Lines[i]
+			line.ItemID = strings.TrimSpace(line.ItemID)
+			if line.ItemID == "" {
+				return invalid("each van-load line needs an item")
+			}
+			sortByExpiry(line.Batches, func(b models.VanLoadBatch) string { return b.ExpiryDate })
+			if len(line.Batches) > 0 {
+				var lineQty float64
+				for _, b := range line.Batches {
+					lineQty += b.Quantity
+				}
+				if line.Quantity <= 0 {
+					line.Quantity = lineQty
+				}
+				if line.Batch == "" {
+					line.Batch = line.Batches[0].Batch
+					line.ExpiryDate = line.Batches[0].ExpiryDate
+				}
+			}
+			if line.Quantity <= 0 {
+				return invalid("van-load line %s needs a quantity", line.ItemID)
+			}
+			line.Quantity = round2(line.Quantity)
+			total += line.Quantity
+		}
+		v.Quantity = round2(total)
+		if v.ItemID == "" {
+			v.ItemID = v.Lines[0].ItemID
+		}
+		if v.Batch == "" {
+			v.Batch = v.Lines[0].Batch
+			v.ExpiryDate = v.Lines[0].ExpiryDate
+		}
+		return nil
+	}
+
 	if v.Quantity <= 0 && len(v.Batches) == 0 {
 		return invalid("a van load needs a quantity")
 	}
@@ -885,10 +926,6 @@ func (r *Repository) DeleteScheme(id string) error {
 
 /* ────────────────────────── rep targets ────────────────────────────── */
 
-func (r *Repository) ListRepTargets(f DocFilter) ([]models.RepTarget, int) {
-	return r.secondary().targets.list(r.bg(), f)
-}
-
 func pct(actual, target float64) float64 {
 	if target <= 0 {
 		return 0
@@ -908,6 +945,17 @@ func computeTarget(in *models.RepTarget) error {
 	in.Status = lower(in.Status)
 	if in.Status == "" {
 		in.Status = "active"
+	}
+	var skuTarget float64
+	for i := range in.SkuLines {
+		line := &in.SkuLines[i]
+		line.ItemID = strings.TrimSpace(line.ItemID)
+		line.VolumeTarget = round2(line.VolumeTarget)
+		line.VolumeActual = round2(line.VolumeActual)
+		skuTarget += line.VolumeTarget
+	}
+	if in.VolumeTarget <= 0 && skuTarget > 0 {
+		in.VolumeTarget = round2(skuTarget)
 	}
 	in.VolumePct = pct(in.VolumeActual, in.VolumeTarget)
 	in.CollectionPct = pct(in.CollectionActual, in.CollectionTarget)
@@ -930,9 +978,105 @@ func computeTarget(in *models.RepTarget) error {
 	return nil
 }
 
+func autoActualsEnabled(in *models.RepTarget) bool {
+	return in.AutoActuals == nil || *in.AutoActuals
+}
+
+// refreshRepTargetActuals rolls volume/collection/onboarding (and per-SKU
+// actuals) from secondary invoices and collections for the target period.
+func (r *Repository) refreshRepTargetActuals(ctx context.Context, in *models.RepTarget) {
+	if !autoActualsEnabled(in) {
+		return
+	}
+	period := strings.TrimSpace(in.Period)
+	if period == "" {
+		return
+	}
+	beatID := ""
+	if rep, err := r.GetRep(in.RepID); err == nil {
+		beatID = rep.BeatID
+		if in.RepName == "" {
+			in.RepName = rep.Name
+		}
+	}
+	invoices, _ := r.secondary().invoices.list(ctx, DocFilter{Limit: 5000})
+	collections, _ := r.secondary().collects.list(ctx, DocFilter{Limit: 5000})
+
+	firstSale := map[string]string{} // outlet → earliest confirmed invoice date
+	skuQty := map[string]float64{}
+	var volume, collected float64
+	invoiceInPeriod := map[string]bool{}
+
+	for _, inv := range invoices {
+		if !isConfirmedInvoice(inv.Status) {
+			continue
+		}
+		if !strings.HasPrefix(inv.Date, period) {
+			continue
+		}
+		if beatID != "" && inv.BeatID != "" && inv.BeatID != beatID {
+			continue
+		}
+		if beatID != "" && inv.BeatID == "" {
+			if out, err := r.GetOutlet(inv.OutletID); err == nil && out.BeatID != beatID {
+				continue
+			}
+		}
+		volume += inv.Quantity
+		skuQty[inv.ItemID] += inv.Quantity
+		invoiceInPeriod[inv.ID] = true
+		if prev, ok := firstSale[inv.OutletID]; !ok || inv.Date < prev {
+			firstSale[inv.OutletID] = inv.Date
+		}
+	}
+	for _, col := range collections {
+		if lower(col.Status) == "void" {
+			continue
+		}
+		if !strings.HasPrefix(col.Date, period) {
+			continue
+		}
+		if !invoiceInPeriod[col.InvoiceID] {
+			continue
+		}
+		collected += col.AmountUGX
+	}
+
+	// Onboarded = outlets whose first confirmed sale in this beat falls in period.
+	onboarded := 0.0
+	allInvoices, _ := r.secondary().invoices.list(ctx, DocFilter{Limit: 5000})
+	earliest := map[string]string{}
+	for _, inv := range allInvoices {
+		if !isConfirmedInvoice(inv.Status) {
+			continue
+		}
+		if beatID != "" && inv.BeatID != "" && inv.BeatID != beatID {
+			continue
+		}
+		if prev, ok := earliest[inv.OutletID]; !ok || inv.Date < prev {
+			earliest[inv.OutletID] = inv.Date
+		}
+	}
+	for outletID, first := range earliest {
+		if strings.HasPrefix(first, period) {
+			if _, ok := firstSale[outletID]; ok {
+				onboarded++
+			}
+		}
+	}
+
+	in.VolumeActual = round2(volume)
+	in.CollectionActual = round2(collected)
+	in.OnboardedActual = onboarded
+	for i := range in.SkuLines {
+		in.SkuLines[i].VolumeActual = round2(skuQty[in.SkuLines[i].ItemID])
+	}
+}
+
 func (r *Repository) CreateRepTarget(in models.RepTarget) (models.RepTarget, error) {
 	ctx := r.bg()
 	s := r.secondary()
+	r.refreshRepTargetActuals(ctx, &in)
 	if err := computeTarget(&in); err != nil {
 		return models.RepTarget{}, err
 	}
@@ -951,11 +1095,33 @@ func (r *Repository) UpdateRepTarget(id string, in models.RepTarget) (models.Rep
 	if lower(cur.Status) == "closed" && lower(in.Status) != "active" {
 		return cur, conflictf("target %s is closed", id)
 	}
+	r.refreshRepTargetActuals(ctx, &in)
 	if err := computeTarget(&in); err != nil {
 		return cur, err
 	}
 	in.ID, in.CreatedAt, in.UpdatedAt = cur.ID, cur.CreatedAt, now()
 	return in, s.targets.update(ctx, in)
+}
+
+func (r *Repository) ListRepTargets(f DocFilter) ([]models.RepTarget, int) {
+	ctx := r.bg()
+	items, total := r.secondary().targets.list(ctx, f)
+	for i := range items {
+		r.refreshRepTargetActuals(ctx, &items[i])
+		_ = computeTarget(&items[i])
+	}
+	return items, total
+}
+
+func (r *Repository) GetRepTarget(id string) (models.RepTarget, error) {
+	ctx := r.bg()
+	item, err := r.secondary().targets.get(ctx, id)
+	if err != nil {
+		return item, err
+	}
+	r.refreshRepTargetActuals(ctx, &item)
+	_ = computeTarget(&item)
+	return item, nil
 }
 
 func (r *Repository) DeleteRepTarget(id string) error {

@@ -206,7 +206,10 @@ func outletFromInput(id string, in models.OutletInput) models.Outlet {
 		DistributorID: in.DistributorID, BeatID: in.BeatID, Lat: in.Lat, Lng: in.Lng,
 		Status: "active", Score: "B", Frequency: "1x/wk",
 		Contact: in.Contact, Phone: in.Phone, RadiusM: in.RadiusM, CreditLimitUGX: in.CreditLimitUGX,
-		PaymentTerms: in.PaymentTerms, PriceList: in.PriceList, Segment: in.Segment, VolumeTier: in.VolumeTier,
+		PaymentTerms: in.PaymentTerms,
+		PriceList:    models.NormalizePriceList(in.PriceList),
+		Segment:      in.Segment,
+		VolumeTier:   models.NormalizeVolumeTier(in.VolumeTier),
 		KYCStatus: kyc, LicenseExpiry: in.LicenseExpiry, Notes: in.Notes, Attrs: attrs,
 	}
 }
