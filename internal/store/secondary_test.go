@@ -255,13 +255,75 @@ func TestSchemeExhaustsAgainstBudgetAndChecksEligibility(t *testing.T) {
 // AC #13 — incentive is computed, never typed.
 func TestRepIncentiveIsComputed(t *testing.T) {
 	r, _, _ := deskRepo(t)
+	manual := false
 	tg, err := r.CreateRepTarget(models.RepTarget{RepID: "FF-01", Period: "2026-09", VolumeTarget: 100, VolumeActual: 50,
-		CollectionTarget: 1_000, CollectionActual: 1_000, IncentiveRate: 200_000, IncentiveUGX: 999_999_999})
+		CollectionTarget: 1_000, CollectionActual: 1_000, IncentiveRate: 200_000, IncentiveUGX: 999_999_999,
+		AutoActuals: &manual})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tg.VolumePct != 50 || tg.CollectionPct != 100 || tg.AchievementPct != 75 || tg.IncentiveUGX != 150_000 {
 		t.Fatalf("incentive not computed from achievement: %+v", tg)
+	}
+}
+
+func TestRepTargetAutoActualsFromInvoices(t *testing.T) {
+	r, credit, _ := deskRepo(t)
+	beatID := "BT-01"
+	if _, err := r.PatchOutlet(credit.ID, models.OutletPatch{BeatID: &beatID}); err != nil {
+		t.Fatal(err)
+	}
+	load := mustLoad(t, r, 20)
+	inv := invoice(credit, load, 10, 1_000, "7 days")
+	inv.BeatID = beatID
+	if _, err := r.CreateSecondaryInvoice(inv); err != nil {
+		t.Fatal(err)
+	}
+	tg, err := r.CreateRepTarget(models.RepTarget{
+		RepID: "FF-01", Period: "2026-09", VolumeTarget: 100, CollectionTarget: 50_000,
+		OnboardingTarget: 5, IncentiveRate: 10_000,
+		SkuLines: []models.RepTargetSkuLine{{ItemID: load.ItemID, VolumeTarget: 100}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tg.VolumeActual < 10 {
+		t.Fatalf("expected volume actual from invoices, got %+v", tg)
+	}
+	if len(tg.SkuLines) != 1 || tg.SkuLines[0].VolumeActual < 10 {
+		t.Fatalf("expected sku line actuals, got %+v", tg.SkuLines)
+	}
+}
+
+func TestVanLoadMultiLine(t *testing.T) {
+	r, _, _ := deskRepo(t)
+	load, err := r.CreateVanLoad(models.VanLoad{
+		Date: "2026-05-26", VehicleID: "UBK 123A",
+		Lines: []models.VanLoadLine{
+			{ItemID: "SKU-1", Quantity: 5},
+			{ItemID: "SKU-2", Quantity: 7},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if load.Quantity != 12 || load.ItemID != "SKU-1" || len(load.Lines) != 2 {
+		t.Fatalf("multi-line load not normalised: %+v", load)
+	}
+}
+
+func TestCreateFieldRep(t *testing.T) {
+	r, _, _ := deskRepo(t)
+	rep, err := r.CreateRep(models.FieldRep{Name: "New Rep", BeatID: "BT-01", Region: "Kampala", Level: "junior"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.ID == "" || rep.Status != "active" {
+		t.Fatalf("rep not created: %+v", rep)
+	}
+	got, err := r.GetRep(rep.ID)
+	if err != nil || got.Name != "New Rep" {
+		t.Fatalf("get rep: %+v %v", got, err)
 	}
 }
 

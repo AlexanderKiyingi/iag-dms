@@ -114,6 +114,9 @@ func registerDomainRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.GET("/beats/:id", auth.RequirePerm("dms.view_overview"), api.GetBeat)
 
 	v1.GET("/field/reps", auth.RequirePerm("dms.field_checkin"), api.ListReps)
+	v1.POST("/field/reps", auth.RequirePerm("dms.field_checkin"), api.CreateRep)
+	v1.PATCH("/field/reps/:id", auth.RequirePerm("dms.field_checkin"), api.PatchRep)
+	v1.DELETE("/field/reps/:id", auth.RequirePerm("dms.field_checkin"), api.DeleteRep)
 	v1.GET("/field/check-ins/stats", auth.RequirePerm("dms.field_checkin"), api.CheckInStats)
 	v1.GET("/field/check-ins", auth.RequirePerm("dms.field_checkin"), api.ListCheckIns)
 	v1.POST("/field/check-ins", auth.RequirePerm("dms.field_checkin"), api.CreateCheckIn)
@@ -124,6 +127,10 @@ func registerDomainRoutes(v1 *gin.RouterGroup, api *handlers.API) {
 	v1.DELETE("/field/visit-reports/:id", auth.RequirePerm("dms.field_checkin"), api.DeleteVisitReport)
 	v1.GET("/field/journey", auth.RequirePerm("dms.field_checkin"), api.Journey)
 	v1.GET("/field/journey/assignments", auth.RequirePerm("dms.field_checkin"), api.ListJourneyAssignments)
+	v1.POST("/field/journey/assignments", auth.RequirePerm("dms.field_checkin"), api.CreateJourneyAssignment)
+	v1.PATCH("/field/journey/assignments/:id", auth.RequirePerm("dms.field_checkin"), api.PatchJourneyAssignment)
+	v1.DELETE("/field/journey/assignments/:id", auth.RequirePerm("dms.field_checkin"), api.DeleteJourneyAssignment)
+	// Legacy aliases (same handlers).
 	v1.POST("/field/journey/assign", auth.RequirePerm("dms.field_checkin"), api.CreateJourneyAssignment)
 	v1.PATCH("/field/journey/assign/:id", auth.RequirePerm("dms.field_checkin"), api.PatchJourneyAssignment)
 	v1.DELETE("/field/journey/assign/:id", auth.RequirePerm("dms.field_checkin"), api.DeleteJourneyAssignment)
