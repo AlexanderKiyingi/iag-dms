@@ -257,6 +257,23 @@ func (r *Repository) pgOrdersBoard(ctx context.Context) map[string][]models.Orde
 	return board
 }
 
+func (r *Repository) pgBeatOutletIDs(ctx context.Context, beatID string) []string {
+	rows, err := r.pool.Query(ctx, `
+		SELECT outlet_id FROM dms_beat_outlets WHERE beat_id = $1 ORDER BY seq, outlet_id`, beatID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil && id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 func (r *Repository) pgListBeats(ctx context.Context, opts ListOpts) ([]models.Beat, int) {
 	opts = defaultLimit(opts)
 	rows, err := r.pool.Query(ctx, `
@@ -270,6 +287,10 @@ func (r *Repository) pgListBeats(ctx context.Context, opts ListOpts) ([]models.B
 	for rows.Next() {
 		var b models.Beat
 		if rows.Scan(&b.ID, &b.Name, &b.RepID, &b.RepName, &b.StopCount, &b.DistanceKm, &b.Status, &b.Progress) == nil {
+			b.OutletIDs = r.pgBeatOutletIDs(ctx, b.ID)
+			if b.StopCount == 0 && len(b.OutletIDs) > 0 {
+				b.StopCount = len(b.OutletIDs)
+			}
 			all = append(all, b)
 		}
 	}
@@ -284,7 +305,14 @@ func (r *Repository) pgGetBeat(ctx context.Context, id string) (models.Beat, err
 	if err == pgx.ErrNoRows {
 		return b, ErrNotFound
 	}
-	return b, err
+	if err != nil {
+		return b, err
+	}
+	b.OutletIDs = r.pgBeatOutletIDs(ctx, b.ID)
+	if b.StopCount == 0 && len(b.OutletIDs) > 0 {
+		b.StopCount = len(b.OutletIDs)
+	}
+	return b, nil
 }
 
 func (r *Repository) pgListReps(ctx context.Context, opts ListOpts) ([]models.FieldRep, int) {

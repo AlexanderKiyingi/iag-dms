@@ -351,6 +351,55 @@ type SecondaryInvoiceInput struct {
 	CanOverride bool `json:"-"`
 }
 
+func normaliseSecondaryInvoice(in *models.SecondaryInvoice) error {
+	if len(in.Lines) > 0 {
+		var totalQty, totalAmt, totalScheme float64
+		for i := range in.Lines {
+			line := &in.Lines[i]
+			line.ItemID = strings.TrimSpace(line.ItemID)
+			if line.ItemID == "" {
+				return invalid("each invoice line needs an item")
+			}
+			if line.Quantity <= 0 {
+				return invalid("invoice line %s needs a quantity", line.ItemID)
+			}
+			line.Quantity = round2(line.Quantity)
+			line.RewardQty = round2(line.RewardQty)
+			line.SchemeValueUGX = round2(line.SchemeValueUGX)
+			if line.UnitPriceUGX < 0 {
+				return invalid("invoice line %s needs a non-negative unit price", line.ItemID)
+			}
+			if line.AmountUGX <= 0 {
+				line.AmountUGX = round2(line.Quantity * line.UnitPriceUGX)
+			} else {
+				line.AmountUGX = round2(line.AmountUGX)
+			}
+			totalQty += line.Quantity
+			totalAmt += line.AmountUGX
+			totalScheme += line.SchemeValueUGX
+		}
+		in.Quantity = round2(totalQty)
+		in.AmountUGX = round2(totalAmt)
+		if totalScheme > 0 || in.SchemeValueUGX <= 0 {
+			in.SchemeValueUGX = round2(totalScheme)
+		}
+		if in.ItemID == "" {
+			in.ItemID = in.Lines[0].ItemID
+		}
+		if in.Batch == "" {
+			in.Batch = in.Lines[0].Batch
+		}
+		if in.UnitPriceUGX <= 0 && in.Quantity > 0 {
+			in.UnitPriceUGX = round2(in.AmountUGX / in.Quantity)
+		}
+		return nil
+	}
+	if in.Quantity > 0 && in.UnitPriceUGX > 0 {
+		in.AmountUGX = round2(in.Quantity * in.UnitPriceUGX)
+	}
+	return nil
+}
+
 func (r *Repository) validateInvoice(ctx context.Context, in *SecondaryInvoiceInput, existing *models.SecondaryInvoice) error {
 	in.SaleKind = "secondary"
 	in.Status = lower(in.Status)
@@ -364,8 +413,14 @@ func (r *Repository) validateInvoice(ctx context.Context, in *SecondaryInvoiceIn
 	if err != nil {
 		return invalid("outlet %q not found", in.OutletID)
 	}
-	if in.Quantity > 0 && in.UnitPriceUGX > 0 {
-		in.AmountUGX = round2(in.Quantity * in.UnitPriceUGX)
+	if err := normaliseSecondaryInvoice(&in.SecondaryInvoice); err != nil {
+		return err
+	}
+	// Default the selling rep from the beat when the form left it blank.
+	if strings.TrimSpace(in.RepID) == "" && strings.TrimSpace(in.BeatID) != "" {
+		if beat, err := r.GetBeat(in.BeatID); err == nil {
+			in.RepID = beat.RepID
+		}
 	}
 	if in.AmountUGX <= 0 {
 		return invalid("a secondary invoice needs a quantity and price")
@@ -375,7 +430,7 @@ func (r *Repository) validateInvoice(ctx context.Context, in *SecondaryInvoiceIn
 	if existing != nil && isConfirmedInvoice(existing.Status) && round2(existing.AmountUGX) != in.AmountUGX {
 		return conflictf("invoice %s is confirmed; its amount is not edited — raise a return or a reversing collection", existing.ID)
 	}
-	// Sell only what is on that van.
+	// Sell only what is on that van (aggregate qty across lines).
 	if in.VanLoadID != "" && in.Quantity > 0 {
 		onVan, err := r.VanOnHand(in.VanLoadID)
 		if err != nil {

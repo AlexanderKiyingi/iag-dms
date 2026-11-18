@@ -312,6 +312,47 @@ func TestVanLoadMultiLine(t *testing.T) {
 	}
 }
 
+func TestSecondaryInvoiceMultiLine(t *testing.T) {
+	r, credit, _ := deskRepo(t)
+	load, err := r.CreateVanLoad(models.VanLoad{
+		Date: "2026-05-26", VehicleID: "UBK 123A",
+		Lines: []models.VanLoadLine{
+			{ItemID: "SKU-1", Quantity: 10},
+			{ItemID: "SKU-2", Quantity: 5},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv, err := r.CreateSecondaryInvoice(SecondaryInvoiceInput{
+		SecondaryInvoice: models.SecondaryInvoice{
+			Date: "2026-05-26", OutletID: credit.ID, VanLoadID: load.ID,
+			PaymentTerms: "Cash on delivery", Status: "invoiced",
+			Lines: []models.SecondaryInvoiceLine{
+				{ItemID: "SKU-1", Quantity: 4, UnitPriceUGX: 1000},
+				{ItemID: "SKU-2", Quantity: 3, UnitPriceUGX: 2000},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Quantity != 7 || inv.AmountUGX != 10000 || inv.ItemID != "SKU-1" || len(inv.Lines) != 2 {
+		t.Fatalf("multi-line invoice not normalised: %+v", inv)
+	}
+	if _, err := r.CreateSecondaryInvoice(SecondaryInvoiceInput{
+		SecondaryInvoice: models.SecondaryInvoice{
+			Date: "2026-05-26", OutletID: credit.ID, VanLoadID: load.ID,
+			PaymentTerms: "Cash on delivery", Status: "invoiced",
+			Lines: []models.SecondaryInvoiceLine{
+				{ItemID: "SKU-1", Quantity: 20, UnitPriceUGX: 1000},
+			},
+		},
+	}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected on-van conflict, got %v", err)
+	}
+}
+
 func TestCreateFieldRep(t *testing.T) {
 	r, _, _ := deskRepo(t)
 	rep, err := r.CreateRep(models.FieldRep{Name: "New Rep", BeatID: "BT-01", Region: "Kampala", Level: "junior"})
@@ -324,6 +365,35 @@ func TestCreateFieldRep(t *testing.T) {
 	got, err := r.GetRep(rep.ID)
 	if err != nil || got.Name != "New Rep" {
 		t.Fatalf("get rep: %+v %v", got, err)
+	}
+}
+
+func TestSecondaryInvoiceDefaultsRepAndRollsSchemeFromLines(t *testing.T) {
+	r, credit, _ := deskRepo(t)
+	load, err := r.CreateVanLoad(models.VanLoad{
+		Date: "2026-05-26", VehicleID: "UBK 123A",
+		Lines: []models.VanLoadLine{{ItemID: "SKU-1", Quantity: 20}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv, err := r.CreateSecondaryInvoice(SecondaryInvoiceInput{
+		SecondaryInvoice: models.SecondaryInvoice{
+			Date: "2026-05-26", OutletID: credit.ID, BeatID: "BT-01", VanLoadID: load.ID,
+			PaymentTerms: "Cash on delivery", Status: "invoiced",
+			Lines: []models.SecondaryInvoiceLine{
+				{ItemID: "SKU-1", Quantity: 5, UnitPriceUGX: 1000, SchemeValueUGX: 500, RewardQty: 1},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.RepID != "FF-01" {
+		t.Fatalf("expected beat default rep FF-01, got %q", inv.RepID)
+	}
+	if inv.SchemeValueUGX != 500 || inv.Lines[0].RewardQty != 1 {
+		t.Fatalf("expected scheme rollup from lines: %+v", inv)
 	}
 }
 
