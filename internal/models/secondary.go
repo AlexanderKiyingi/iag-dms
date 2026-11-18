@@ -13,23 +13,26 @@ import "time"
 // Prefer Lines for multi-SKU loads; ItemID/Quantity/Batches remain for
 // single-line legacy rows and as rolled-up totals when Lines is set.
 type VanLoad struct {
-	ID           string         `json:"id"`
-	Date         string         `json:"date"`
-	VehicleID    string         `json:"vehicleId"`
-	Driver       string         `json:"driver"`
-	BeatID       string         `json:"beatId"`
-	ItemID       string         `json:"itemId"`
-	Quantity     float64        `json:"quantity"`
-	Batch        string         `json:"batch"`
-	ExpiryDate   string         `json:"expiryDate"`
-	Batches      []VanLoadBatch `json:"batches"`
-	Lines        []VanLoadLine  `json:"lines,omitempty"`
-	SaleKind     string         `json:"saleKind"`     // always "primary"
-	PostingClass string         `json:"postingClass"` // always "internal-transfer"
-	Status       string         `json:"status"`       // loaded | in_transit | returned
-	Notes        string         `json:"notes"`
-	CreatedAt    time.Time      `json:"createdAt"`
-	UpdatedAt    time.Time      `json:"updatedAt"`
+	ID                   string         `json:"id"`
+	Date                 string         `json:"date"`
+	VehicleID            string         `json:"vehicleId"`
+	Driver               string         `json:"driver"`
+	BeatID               string         `json:"beatId"`
+	ItemID               string         `json:"itemId"`
+	Quantity             float64        `json:"quantity"`
+	Batch                string         `json:"batch"`
+	ExpiryDate           string         `json:"expiryDate"`
+	Batches              []VanLoadBatch `json:"batches"`
+	Lines                []VanLoadLine  `json:"lines,omitempty"`
+	SourcePickListID     string         `json:"sourcePickListId,omitempty"`
+	SourcePackSessionID  string         `json:"sourcePackSessionId,omitempty"`
+	SourceOrderRef       string         `json:"sourceOrderRef,omitempty"`
+	SaleKind             string         `json:"saleKind"`     // always "primary"
+	PostingClass         string         `json:"postingClass"` // always "internal-transfer"
+	Status               string         `json:"status"`       // loaded | in_transit | returned
+	Notes                string         `json:"notes"`
+	CreatedAt            time.Time      `json:"createdAt"`
+	UpdatedAt            time.Time      `json:"updatedAt"`
 }
 
 type VanLoadBatch struct {
@@ -50,36 +53,51 @@ type VanLoadLine struct {
 func (v VanLoad) DocID() string                     { return v.ID }
 func (v VanLoad) DocKeys() (string, string, string) { return v.Status, "", v.VehicleID }
 
+// SecondaryInvoiceLine is one SKU on a multi-item secondary invoice.
+// Prefer Lines for multi-SKU invoices; header ItemID/Quantity/UnitPriceUGX
+// remain for single-line legacy rows and as rolled-up totals when Lines is set.
+type SecondaryInvoiceLine struct {
+	ItemID         string  `json:"itemId"`
+	Quantity       float64 `json:"quantity"`
+	Batch          string  `json:"batch,omitempty"`
+	UnitPriceUGX   float64 `json:"unitPriceUgx"`
+	AmountUGX      float64 `json:"amountUgx,omitempty"`
+	SchemeValueUGX float64 `json:"schemeValueUgx,omitempty"`
+	RewardQty      float64 `json:"rewardQty,omitempty"`
+}
+
 // SecondaryInvoice is the revenue / AR event: van → retailer.
 type SecondaryInvoice struct {
-	ID             string    `json:"id"`
-	Date           string    `json:"date"`
-	OutletID       string    `json:"outletId"`
-	BeatID         string    `json:"beatId"`
-	VanID          string    `json:"vanId"`
-	VanLoadID      string    `json:"vanLoadId"`
-	ItemID         string    `json:"itemId"`
-	Batch          string    `json:"batch"`
-	Quantity       float64   `json:"quantity"`
-	UnitPriceUGX   float64   `json:"unitPriceUgx"`
-	AmountUGX      float64   `json:"amountUgx"`
-	TaxUGX         float64   `json:"taxUgx"`
-	PaymentTerms   string    `json:"paymentTerms"`
-	DueDate        string    `json:"dueDate"`
-	SchemeID       string    `json:"schemeId"`
-	SchemeValueUGX float64   `json:"schemeValueUgx"`
-	CreditOverride bool      `json:"creditOverride"`
-	OverrideReason string    `json:"overrideReason"`
-	OverrideBy     string    `json:"overrideBy"`
-	InvoiceChannel string    `json:"invoiceChannel"`
-	SaleKind       string    `json:"saleKind"`       // always "secondary"
-	OutstandingUGX float64   `json:"outstandingUgx"` // derived: amount − collections − credited returns
-	Status         string    `json:"status"`         // draft | invoiced | paid | void
-	Notes          string    `json:"notes"`
+	ID             string                 `json:"id"`
+	Date           string                 `json:"date"`
+	OutletID       string                 `json:"outletId"`
+	BeatID         string                 `json:"beatId"`
+	RepID          string                 `json:"repId,omitempty"`
+	VanID          string                 `json:"vanId"`
+	VanLoadID      string                 `json:"vanLoadId"`
+	ItemID         string                 `json:"itemId"`
+	Batch          string                 `json:"batch"`
+	Quantity       float64                `json:"quantity"`
+	UnitPriceUGX   float64                `json:"unitPriceUgx"`
+	AmountUGX      float64                `json:"amountUgx"`
+	TaxUGX         float64                `json:"taxUgx"`
+	Lines          []SecondaryInvoiceLine `json:"lines,omitempty"`
+	PaymentTerms   string                 `json:"paymentTerms"`
+	DueDate        string                 `json:"dueDate"`
+	SchemeID       string                 `json:"schemeId"`
+	SchemeValueUGX float64                `json:"schemeValueUgx"`
+	CreditOverride bool                   `json:"creditOverride"`
+	OverrideReason string                 `json:"overrideReason"`
+	OverrideBy     string                 `json:"overrideBy"`
+	InvoiceChannel string                 `json:"invoiceChannel"`
+	SaleKind       string                 `json:"saleKind"`       // always "secondary"
+	OutstandingUGX float64                `json:"outstandingUgx"` // derived: amount − collections − credited returns
+	Status         string                 `json:"status"`         // draft | invoiced | paid | void
+	Notes          string                 `json:"notes"`
 	// Supporting files uploaded via /api/attachments (refs only, no blobs).
-	Attachments    []any     `json:"attachments,omitempty"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	Attachments []any     `json:"attachments,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 func (s SecondaryInvoice) DocID() string { return s.ID }

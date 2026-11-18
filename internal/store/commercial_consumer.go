@@ -88,6 +88,9 @@ func signalID(eventID string) string {
 }
 
 func (r *Repository) insertCommercialSignal(ctx context.Context, eventID, kind, entityID, entityName, signalType, strength, hint string) error {
+	if r.pool == nil {
+		return nil
+	}
 	id := signalID(eventID)
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO dms_signals (id, kind, entity_id, entity_name, signal_type, strength, action_hint, observed_at)
